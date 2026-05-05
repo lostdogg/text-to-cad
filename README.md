@@ -126,6 +126,104 @@ frontend/
     └── types/           # TypeScript interfaces
 ```
 
+## Publishing / Deployment
+
+### 1. Prepare environment variables
+
+Copy `.env.example` to `.env` and fill in your values before any build or push step:
+
+```bash
+cp .env.example .env
+# edit .env — set OPENAI_API_KEY, MODE=cloud, etc.
+```
+
+### 2. Build and tag the Docker image
+
+```bash
+# Replace <registry> and <tag> as appropriate (e.g. docker.io/youruser/text-to-cad:1.0.0)
+docker build -t <registry>/text-to-cad:<tag> .
+```
+
+### 3. Push the image to a container registry
+
+**Docker Hub**
+```bash
+docker login
+docker push <dockerhub-username>/text-to-cad:<tag>
+```
+
+**GitHub Container Registry (GHCR)**
+```bash
+echo $CR_PAT | docker login ghcr.io -u <github-username> --password-stdin
+docker tag text-to-cad:<tag> ghcr.io/<github-username>/text-to-cad:<tag>
+docker push ghcr.io/<github-username>/text-to-cad:<tag>
+```
+
+### 4. Build the frontend for production
+
+```bash
+cd frontend
+npm install
+npm run build          # outputs to frontend/dist/
+```
+
+Serve `frontend/dist/` with any static host (Nginx, Vercel, Netlify, S3 + CloudFront, etc.) or embed it in your backend Docker image.
+
+### 5. Deploy with Docker Compose (self-hosted)
+
+```bash
+# On the target server, pull the latest images and start the stack
+docker-compose pull
+docker-compose up -d --build
+```
+
+Set `VITE_API_URL` and `VITE_WS_URL` in `docker-compose.yml` (or via environment) to your public backend URL before deploying.
+
+### 6. Deploy to a cloud platform
+
+**AWS Elastic Container Service (ECS) / Fargate**
+1. Push the image to Amazon ECR: `aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com`
+2. Create an ECS task definition pointing to the image.
+3. Create a Fargate service; expose port 8000 via an Application Load Balancer.
+
+**Google Cloud Run**
+```bash
+gcloud auth configure-docker
+docker tag text-to-cad:<tag> gcr.io/<project>/text-to-cad:<tag>
+docker push gcr.io/<project>/text-to-cad:<tag>
+gcloud run deploy text-to-cad \
+  --image gcr.io/<project>/text-to-cad:<tag> \
+  --platform managed --region <region> \
+  --port 8000 --allow-unauthenticated
+```
+
+**Azure Container Apps / ACI**
+```bash
+az acr login --name <registry>
+docker tag text-to-cad:<tag> <registry>.azurecr.io/text-to-cad:<tag>
+docker push <registry>.azurecr.io/text-to-cad:<tag>
+az containerapp create --name text-to-cad --resource-group <rg> \
+  --image <registry>.azurecr.io/text-to-cad:<tag> \
+  --target-port 8000 --ingress external
+```
+
+### 7. Verify the deployment
+
+```bash
+curl https://<your-domain>/api/health
+# Expected: {"status":"healthy"}
+```
+
+### 8. Semantic versioning & tagging (recommended)
+
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+docker build -t <registry>/text-to-cad:1.0.0 -t <registry>/text-to-cad:latest .
+docker push <registry>/text-to-cad:1.0.0
+docker push <registry>/text-to-cad:latest
+```
+
 ## License
 
 MIT
