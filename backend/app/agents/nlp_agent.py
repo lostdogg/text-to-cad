@@ -124,6 +124,36 @@ _ROTATION_RE = re.compile(
     re.IGNORECASE,
 )
 
+# ── Sentence-splitting patterns used in _parse_with_rules ──────────────────
+# Always active: explicit delimiters, "from", and spatial relationship phrases.
+# Each spatial phrase separates two distinct primitives.
+_SPLIT_BASE = re.compile(
+    r"\bthen\b"            # sequence connector
+    r"|,|;"               # punctuation delimiters
+    r"|\bfrom\b"          # subtraction "A from B"
+    r"|\bout\s+of\b"      # "cut A out of B"
+    r"|\bon\s+top\s+of\b" # "A on top of B"
+    r"|\babove\b"         # "A above B"
+    r"|\bbelow\b"         # "A below B"
+    r"|\bunder\b",        # "A under B"
+    re.IGNORECASE,
+)
+
+# Extra splits for subtraction contexts: "and", "in a/an/the", "inside a/an/the".
+_SPLIT_SUBTRACT_EXTRA = re.compile(
+    r"\band\b"
+    r"|\bin\s+(?:a|an|the)\b"       # "drill a hole in a box"
+    r"|\binside\s+(?:a|an|the)\b",  # "sphere inside a cube"
+    re.IGNORECASE,
+)
+
+# Extra splits for union/intersection contexts: "and", "with".
+_SPLIT_UNION_INTERSECT_EXTRA = re.compile(
+    r"\band\b"
+    r"|\bwith\b",   # "merge A with B"
+    re.IGNORECASE,
+)
+
 
 def _strip_json_fences(raw: str) -> str:
     """Remove markdown code fences that some models wrap around JSON output."""
@@ -262,23 +292,21 @@ class NLPAgent:
         # Boolean splitters: only when boolean keywords are present         #
         # Spatial splitters: always active (each is a separate primitive)   #
         # ---------------------------------------------------------------- #
-        # Always split on these:
-        base_split = r"\bthen\b|,|;|\bfrom\b|\bout\s+of\b|\bon\s+top\s+of\b|\babove\b|\bbelow\b|\bunder\b"
-        sentences = re.split(base_split, text)
+        sentences = _SPLIT_BASE.split(text)
 
         if has_subtract:
             # Also split on "and" and "in a/an/the" for subtraction patterns
             # (e.g. "drill a hole in a box" → ["drill a hole", "box"])
             sentences = [
                 s for seg in sentences
-                for s in re.split(r"\band\b|\bin\s+(?:a|an|the)\b|\binside\s+(?:a|an|the)\b", seg)
+                for s in _SPLIT_SUBTRACT_EXTRA.split(seg)
             ]
         elif has_union or has_intersect:
             # Split on "and" and "with" for union/intersection patterns
             # (e.g. "merge a sphere with a box" → ["merge a sphere", "a box"])
             sentences = [
                 s for seg in sentences
-                for s in re.split(r"\band\b|\bwith\b", seg)
+                for s in _SPLIT_UNION_INTERSECT_EXTRA.split(seg)
             ]
         # NOTE: when no boolean keywords, intentionally do NOT split on "and"
         # so that "torus with major radius Xmm and minor radius Ymm" stays whole.
