@@ -30,38 +30,89 @@ AI-powered text-to-3D-CAD generation with multi-agent architecture, manufacturin
    └────── X+ (Right)
 ```
 
-## Prerequisites
+## Before You Begin
 
-| Tool | Minimum version |
-|------|----------------|
-| Python | 3.11+ |
-| Node.js | 20+ |
-| Docker + Docker Compose | any recent version (Option A only) |
+### Opening a terminal
+
+All commands below are typed into a **terminal** (command-line window):
+
+| OS | How to open |
+|----|------------|
+| **Windows** | Press `Win + R`, type `powershell`, press Enter — **or** search "PowerShell" in the Start menu |
+| **macOS** | Press `Cmd + Space`, type `Terminal`, press Enter |
+| **Linux** | Press `Ctrl + Alt + T`, or search "Terminal" in your app launcher |
+
+### Prerequisites
+
+You need the following tools installed before you start. Click each link for the official installer:
+
+| Tool | Minimum version | Install guide |
+|------|----------------|---------------|
+| **Git** | any | https://git-scm.com/downloads |
+| **Python** | 3.11+ | https://www.python.org/downloads/ |
+| **Node.js** | 20+ | https://nodejs.org/ (download the LTS version) |
+| **Docker Desktop** | any recent | https://www.docker.com/products/docker-desktop/ *(Option A only)* |
+
+After installing, verify each tool by running these commands in your terminal — each should print a version number and not an error:
+
+```bash
+git --version
+python --version      # or: python3 --version  on macOS/Linux
+node --version
+docker --version      # only needed for Option A
+```
+
+> **Windows note:** If `python` is not found, try `py --version`. During Python installation, check the box **"Add Python to PATH"**.
 
 ## Quick Start
 
-### Option A — Docker (recommended)
+### Step 1 — Download the project
+
+Open a terminal, navigate to a folder where you want to store the project, then run:
+
+```bash
+git clone https://github.com/lostdogg/text-to-cad.git
+cd text-to-cad
+```
+
+> **New to Git?** `git clone` downloads a copy of the project to your computer. `cd text-to-cad` moves into that folder — all following commands must be run from inside it.
+
+### Step 2 — Choose an install method
+
+### Option A — Docker (recommended for beginners)
+
+Docker bundles everything into containers so you don't need to install Python or Node.js separately. Make sure **Docker Desktop is open and running** before continuing.
 
 ```bash
 # 1. Copy the example environment file
-cp .env.example .env
+cp .env.example .env          # Linux / macOS
+Copy-Item .env.example .env   # Windows PowerShell
 
-# 2. Open .env in your editor and fill in any API keys you want to use
-#    (see "Environment Variables" section below for details)
+# 2. (Optional) Open .env and add API keys — skip this if you just want to try the app
 nano .env          # Linux / macOS
 notepad .env       # Windows
+#    See the "Environment Variables" section below for details.
+#    You do NOT need any API key to use the app — it works without one.
 
-# 3. Build and start all services
+# 3. Build and start all services (first run may take a few minutes)
 docker-compose up --build
 ```
 
-- Backend API: http://localhost:8000
-- Frontend:    http://localhost:5173
-- API Docs:    http://localhost:8000/docs
+Once you see `Application startup complete` in the terminal output:
 
-### Option B — Local (Windows / Linux)
+- 🌐 **Open the app:** http://localhost:5173
+- 📖 API Docs: http://localhost:8000/docs
+
+To stop the app, press `Ctrl + C` in the terminal.
+
+### Option B — Local (no Docker)
+
+Use this if you prefer not to install Docker, or if Docker is unavailable on your machine.
 
 **1. Set up environment variables**
+
+You do **not** need an API key to run the app. This step is optional.
+
 ```bash
 # Linux / macOS
 cp .env.example .env
@@ -73,21 +124,32 @@ notepad .env
 ```
 
 **2. Backend**
+
+Open a terminal in the `text-to-cad` folder and run:
+
 ```bash
 pip install -r requirements.txt
 uvicorn backend.app.main:app --reload --port 8000
 ```
 
-**3. Frontend** (in a separate terminal)
+> **macOS/Linux:** If `pip` is not found, try `pip3`. If `python` is not found, try `python3`.
+
+Wait until you see `Application startup complete` before continuing.
+
+**3. Frontend** (open a *second* terminal window, also in the `text-to-cad` folder)
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-- Backend API: http://localhost:8000
-- Frontend:    http://localhost:5173
-- API Docs:    http://localhost:8000/docs
+Once you see `Local: http://localhost:5173` in the output:
+
+- 🌐 **Open the app:** http://localhost:5173
+- 📖 API Docs: http://localhost:8000/docs
+
+To stop, press `Ctrl + C` in each terminal window.
 
 ### Environment Variables
 
@@ -304,6 +366,38 @@ docker build -t <registry>/text-to-cad:1.0.0 -t <registry>/text-to-cad:latest .
 docker push <registry>/text-to-cad:1.0.0
 docker push <registry>/text-to-cad:latest
 ```
+
+## Troubleshooting
+
+### "Port already in use" / `address already in use`
+Something else is using port 8000 or 5173. Either stop that other program, or change the port:
+- Backend: add `--port 8001` to the `uvicorn` command and update `PORT=8001` in `.env`.
+- Frontend: `npm run dev -- --port 5174`.
+
+### `python` / `pip` not found (Windows)
+- Make sure you checked **"Add Python to PATH"** during installation. If you didn't, re-run the Python installer and enable that option.
+- Try `py` instead of `python`, and `py -m pip` instead of `pip`.
+
+### `python` / `pip` not found (macOS / Linux)
+- Try `python3` and `pip3` instead.
+
+### `npm` not found
+Node.js is not installed or not on your PATH. Download and install it from https://nodejs.org/ (use the LTS version) and restart your terminal.
+
+### `docker: command not found` / Docker not running
+- Install Docker Desktop from https://www.docker.com/products/docker-desktop/
+- Make sure the Docker Desktop application is **open and running** (look for the whale icon in your system tray / menu bar) before running `docker-compose`.
+
+### `git: command not found`
+Install Git from https://git-scm.com/downloads and restart your terminal.
+
+### The app opens but AI generation doesn't work / returns a basic shape
+No AI key is configured. The app uses a built-in rule-based parser by default. To enable smarter AI responses, add an API key to `.env` (see [Optional — AI NLP Providers](#optional--ai-nlp-providers) above) or paste it directly in the UI.
+
+### Changes to `.env` are not picked up
+Restart the server after editing `.env`:
+- Docker: `docker-compose down && docker-compose up --build`
+- Local: stop `uvicorn` with `Ctrl + C` and run it again.
 
 ## License
 
