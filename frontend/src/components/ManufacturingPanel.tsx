@@ -213,19 +213,28 @@ export const ManufacturingPanel: React.FC = () => {
   const { manufacturing, setManufacturingTab, validation, manufacturingReport, currentModel, exportModel, downloadReport } = useCADStore();
 
   return (
-    <div className="panel flex flex-col gap-4 p-4 h-full overflow-y-auto">
-      <h2 className="text-lg font-semibold text-sky-400">Manufacturing</h2>
+    <div className="panel flex flex-col gap-0 h-full overflow-y-auto">
+      {/* SW PropertyManager-style section header */}
+      <div className="cad-section-header">
+        <svg className="w-3 h-3 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        CAM / Manufacturing
+      </div>
+
+      <div className="flex flex-col gap-4 p-4">
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-zinc-800 rounded-lg p-1">
+      <div className="flex gap-0.5 bg-zinc-950 rounded-sm p-0.5 border border-zinc-600">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setManufacturingTab(tab.key)}
-            className={`flex-1 py-1.5 rounded text-xs font-medium transition-colors ${
+            className={`flex-1 py-1.5 rounded-sm text-xs font-semibold transition-colors ${
               manufacturing.activeTab === tab.key
                 ? 'bg-sky-600 text-white'
-                : 'text-zinc-400 hover:text-zinc-200'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700'
             }`}
           >
             {tab.label}
@@ -337,6 +346,7 @@ export const ManufacturingPanel: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

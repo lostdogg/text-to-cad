@@ -144,17 +144,22 @@ export const SemanticWorkspace: React.FC = () => {
   const charCount = inputText.length;
 
   return (
-    <div className="panel flex flex-col gap-4 p-4 h-full overflow-y-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-sky-400">Semantic Workspace</h2>
+    <div className="panel flex flex-col gap-0 h-full overflow-y-auto">
+      {/* SW PropertyManager-style section header */}
+      <div className="cad-section-header">
+        <svg className="w-3 h-3 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+        Feature Manager
         <button
           onClick={() => setShowHistory((v) => !v)}
-          className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+          className="ml-auto text-zinc-500 hover:text-zinc-300 transition-colors normal-case text-[10px] tracking-normal font-normal"
         >
-          {showHistory ? 'Hide' : 'Show'} History
+          {showHistory ? 'Hide' : 'History'}
         </button>
       </div>
+
+      <div className="flex flex-col gap-4 p-4">
 
       {/* Input area */}
       <div className="flex flex-col gap-1.5">
@@ -197,11 +202,11 @@ export const SemanticWorkspace: React.FC = () => {
         </select>
       </div>
 
-      {/* Generate button */}
+      {/* Generate button — Mastercam-style orange primary CTA */}
       <button
         onClick={handleGenerate}
         disabled={isLoading || !inputText.trim()}
-        className="btn-primary justify-center py-2.5 text-base font-semibold"
+        className="btn-mc justify-center py-2 text-sm font-semibold"
       >
         {isLoading ? (
           <>
@@ -224,14 +229,14 @@ export const SemanticWorkspace: React.FC = () => {
 
       {/* Multi-stage loading progress */}
       {isLoading && (
-        <div className="bg-zinc-800/60 border border-zinc-700 rounded-lg px-3 py-2.5">
+        <div className="bg-zinc-800/60 border border-zinc-600 rounded-sm px-3 py-2.5">
           <LoadingStages />
         </div>
       )}
 
       {/* Error display */}
       {error && (
-        <div className="bg-red-900/30 border border-red-700 rounded p-3 flex items-start gap-2">
+        <div className="bg-red-900/30 border border-red-800 rounded-sm p-3 flex items-start gap-2">
           <svg className="h-4 w-4 text-red-400 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
           </svg>
@@ -246,19 +251,19 @@ export const SemanticWorkspace: React.FC = () => {
 
       {/* Agent logs (collapsible) */}
       {agentLogs.length > 0 && !isLoading && (
-        <div className="border border-zinc-700 rounded-lg overflow-hidden">
+        <div className="border border-zinc-600 rounded-sm overflow-hidden">
           <button
             onClick={() => setShowLogs((v) => !v)}
-            className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 hover:bg-zinc-750 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
+            className="w-full flex items-center justify-between px-3 py-1.5 bg-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
           >
             <span className="flex items-center gap-1.5">
               <span>⚙</span>
               <span>Agent Pipeline Logs ({agentLogs.length})</span>
             </span>
-            <span>{showLogs ? '▲' : '▼'}</span>
+            <span className="text-zinc-500">{showLogs ? '▲' : '▼'}</span>
           </button>
           {showLogs && (
-            <div className="bg-zinc-900 px-3 py-2 max-h-40 overflow-y-auto">
+            <div className="bg-zinc-950 px-3 py-2 max-h-40 overflow-y-auto">
               {agentLogs.map((log, i) => (
                 <p key={i} className="text-xs font-mono text-zinc-500 leading-5">{log}</p>
               ))}
@@ -272,10 +277,10 @@ export const SemanticWorkspace: React.FC = () => {
         <label className="label">Example Prompts</label>
         <div className="flex flex-col gap-1">
           {EXAMPLE_CATEGORIES.map((cat) => (
-            <div key={cat.label} className="border border-zinc-700 rounded-lg overflow-hidden">
+            <div key={cat.label} className="border border-zinc-600 rounded-sm overflow-hidden">
               <button
                 onClick={() => setOpenCategory(openCategory === cat.label ? null : cat.label)}
-                className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 hover:bg-zinc-750 text-xs font-medium text-zinc-300 hover:text-white transition-colors"
+                className="w-full flex items-center justify-between px-3 py-1.5 bg-zinc-800 text-xs font-semibold text-zinc-300 hover:text-white hover:bg-zinc-700 transition-colors"
               >
                 <span>{cat.label}</span>
                 <span className="text-zinc-500">{openCategory === cat.label ? '▲' : '▼'}</span>
@@ -286,7 +291,7 @@ export const SemanticWorkspace: React.FC = () => {
                     <button
                       key={i}
                       onClick={() => applyExample(p)}
-                      className="block w-full text-left px-3 py-2 text-xs text-zinc-400 hover:text-sky-300 hover:bg-zinc-800/60 transition-colors"
+                      className="block w-full text-left px-3 py-1.5 text-xs text-zinc-400 hover:text-sky-400 hover:bg-zinc-800 transition-colors"
                       title={p}
                     >
                       {p}
@@ -301,13 +306,13 @@ export const SemanticWorkspace: React.FC = () => {
 
       {/* History */}
       {showHistory && models.length > 0 && (
-        <div className="border-t border-zinc-700 pt-3">
+        <div className="border-t border-zinc-600 pt-3">
           <label className="label">Recent Models</label>
           <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
             {models.slice(0, 10).map((m) => (
               <div
                 key={m.id}
-                className="text-xs text-zinc-400 bg-zinc-800 px-2 py-1.5 rounded truncate cursor-pointer hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+                className="text-xs text-zinc-400 bg-zinc-800 px-2 py-1.5 rounded-sm truncate cursor-pointer hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
                 title={m.source_text}
                 onClick={() => {
                   setInputText(m.source_text ?? '');
@@ -320,6 +325,7 @@ export const SemanticWorkspace: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };
