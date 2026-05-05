@@ -41,16 +41,16 @@ function CADMesh({ meshData, wireframe, onContextMenu }: CADMeshProps) {
         onContextMenu={onContextMenu}
       >
         <meshStandardMaterial
-          color="#4DA6FF"
-          metalness={0.3}
-          roughness={0.4}
+          color="#5AAED8"
+          metalness={0.25}
+          roughness={0.45}
           side={THREE.DoubleSide}
           wireframe={wireframe}
         />
       </mesh>
       {wireframe && (
         <mesh geometry={geometry}>
-          <meshBasicMaterial color="#88CCFF" wireframe transparent opacity={0.3} />
+          <meshBasicMaterial color="#7BBBD8" wireframe transparent opacity={0.3} />
         </mesh>
       )}
     </group>
@@ -209,6 +209,9 @@ function Scene({
 
   return (
     <>
+      {/* SW dark-mode viewport background */}
+      <color attach="background" args={['#0F1820']} />
+
       <ambientLight intensity={0.5} />
       <directionalLight position={[50, 50, 80]} intensity={1} castShadow />
       <directionalLight position={[-30, -30, 40]} intensity={0.3} />
@@ -326,28 +329,28 @@ export const CADViewer: React.FC = () => {
   const closeContextMenu = () => setContextMenu((s) => ({ ...s, visible: false }));
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-zinc-950 rounded-lg overflow-hidden"
+    <div ref={containerRef} className="relative w-full h-full bg-zinc-950 overflow-hidden"
       onClick={closeContextMenu}>
 
       {/* Toolbar */}
-      <div className="absolute top-2 left-2 z-10 flex gap-1.5 flex-wrap">
+      <div className="absolute top-2 left-2 z-10 flex gap-1 flex-wrap">
         <button onClick={toggleWireframe}
-          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${wireframe ? 'bg-sky-600 text-white' : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'}`}>
+          className={wireframe ? 'toolbar-btn-active' : 'toolbar-btn'}>
           Wireframe
         </button>
         <button onClick={toggleGrid}
-          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${showGrid ? 'bg-sky-600 text-white' : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'}`}>
+          className={showGrid ? 'toolbar-btn-active' : 'toolbar-btn'}>
           Grid
         </button>
         <button onClick={() => { toggleMeasureMode(); setMeasurePoints([]); setMeasureDist(null); }}
-          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${measureMode ? 'bg-amber-600 text-white' : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'}`}>
+          className={measureMode ? 'toolbar-btn-warn' : 'toolbar-btn'}>
           Measure
         </button>
         <button
           onClick={() => setFitTrigger((n) => n + 1)}
           disabled={!modelBounds}
           title="Fit model to view"
-          className="px-2 py-1 rounded text-xs font-medium transition-colors bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="toolbar-btn disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Fit View
         </button>
@@ -355,13 +358,13 @@ export const CADViewer: React.FC = () => {
 
       {/* Quick export buttons */}
       {currentModel && (
-        <div className="absolute top-2 right-2 z-10 flex gap-1.5">
+        <div className="absolute top-2 right-2 z-10 flex gap-1">
           {(['stl', 'obj', 'step'] as const).map((fmt) => (
             <button
               key={fmt}
               onClick={() => exportModel(fmt, currentModel.id)}
               title={`Export ${fmt.toUpperCase()}`}
-              className="px-2 py-1 rounded text-xs font-medium bg-zinc-800/80 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
+              className="toolbar-btn"
             >
               ↓ {fmt.toUpperCase()}
             </button>
@@ -371,14 +374,14 @@ export const CADViewer: React.FC = () => {
 
       {/* Measure distance display */}
       {measureDist !== null && (
-        <div className="absolute top-10 right-2 z-10 bg-amber-900/80 border border-amber-600 rounded px-3 py-1 text-sm text-amber-300">
+        <div className="absolute top-10 right-2 z-10 bg-mc-900/90 border border-mc-600 rounded-sm px-3 py-1 text-sm text-mc-300">
           Distance: <strong>{measureDist} mm</strong>
         </div>
       )}
 
       {/* Measure instructions */}
       {measureMode && !measureDist && (
-        <div className="absolute top-10 right-2 z-10 bg-zinc-800/80 border border-zinc-600 rounded px-3 py-1 text-xs text-zinc-400">
+        <div className="absolute top-10 right-2 z-10 bg-zinc-800/90 border border-zinc-600 rounded-sm px-3 py-1 text-xs text-zinc-400">
           {measurePoints.length === 0 ? 'Click first point' : 'Click second point'}
         </div>
       )}
@@ -418,11 +421,11 @@ export const CADViewer: React.FC = () => {
         </Suspense>
       </Canvas>
 
-      {/* Model info overlay */}
+      {/* Model info overlay — SW-style info panel */}
       {currentModel?.mesh_data && (
-        <div className="absolute bottom-8 left-2 z-10 bg-zinc-900/80 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-400 backdrop-blur-sm max-w-[220px]">
-          <p className="text-zinc-200 font-medium truncate">{currentModel.name}</p>
-          <p className="mt-0.5">
+        <div className="absolute bottom-8 left-2 z-10 bg-zinc-800/90 border border-zinc-600 rounded-sm px-3 py-2 text-xs text-zinc-400 backdrop-blur-sm max-w-[220px]">
+          <p className="text-zinc-200 font-semibold truncate">{currentModel.name}</p>
+          <p className="mt-0.5 text-zinc-400">
             {currentModel.mesh_data.vertex_count.toLocaleString()} verts &middot;{' '}
             {currentModel.mesh_data.face_count.toLocaleString()} faces
           </p>
@@ -466,7 +469,7 @@ function ContextMenuOverlay({ x, y, onClose, modelId }: ContextMenuOverlayProps)
   ];
   return (
     <div
-      className="fixed z-50 bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl py-1 min-w-[180px]"
+      className="fixed z-50 bg-zinc-800 border border-zinc-600 rounded-sm shadow-2xl py-1 min-w-[180px]"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -474,14 +477,14 @@ function ContextMenuOverlay({ x, y, onClose, modelId }: ContextMenuOverlayProps)
         <button
           key={item.label}
           onClick={() => { item.action(); onClose(); }}
-          className="block w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
+          className="block w-full text-left px-4 py-1.5 text-xs text-zinc-300 hover:bg-sky-600 hover:text-white transition-colors"
         >
           {item.label}
         </button>
       ))}
-      <div className="border-t border-zinc-700 mt-1 pt-1">
+      <div className="border-t border-zinc-600 mt-1 pt-1">
         <button onClick={onClose}
-          className="block w-full text-left px-4 py-2 text-sm text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300 transition-colors">
+          className="block w-full text-left px-4 py-1.5 text-xs text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300 transition-colors">
           Close
         </button>
       </div>
