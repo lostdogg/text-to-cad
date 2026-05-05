@@ -1,6 +1,6 @@
 """NLP Agent: converts natural language text into a GeometrySpec.
 
-Uses rule-based parsing by default; optionally uses OpenAI GPT-4 when an
+Uses rule-based parsing by default; optionally uses OpenAI GPT-4o when an
 OPENAI_API_KEY is configured.
 """
 
@@ -22,6 +22,40 @@ from ..models.geometry import (
 )
 
 logger = logging.getLogger(__name__)
+
+# System prompt for OpenAI: separates instructions from user content (best practice)
+_SYSTEM_PROMPT = """\
+You are a precise CAD geometry parser. Given a natural language description of a \
+3D object, return ONLY a valid JSON object with this exact structure:
+{
+  "primitives": [
+    {
+      "type": "box|cylinder|sphere|cone|torus",
+      "dimensions": {"width": N, "height": N, "depth": N},
+      "transform": {
+        "position": {"x": 0, "y": 0, "z": 0},
+        "rotation": {"x": 0, "y": 0, "z": 0},
+        "scale": {"x": 1, "y": 1, "z": 1}
+      },
+      "name": "optional name"
+    }
+  ],
+  "operations": [
+    {
+      "operation": "union|intersection|subtraction",
+      "operand_a": 0,
+      "operand_b": 1,
+      "name": "optional"
+    }
+  ],
+  "description": "original text"
+}
+Rules:
+- All dimensions must be in millimeters.
+- Use position/rotation/scale in transform when spatial relationships are described \
+(e.g. "on top of", "offset by", "rotated 45 degrees").
+- Do NOT include markdown, code fences, or any text outside the JSON object.\
+"""
 
 # Unit conversion to mm
 UNIT_FACTORS: Dict[str, float] = {
@@ -52,23 +86,38 @@ class NLPAgent:
     def __init__(self, openai_api_key: Optional[str] = None):
         self.openai_api_key = openai_api_key
         self._openai_available = False
+        # Simple in-memory cache: normalized text -> GeometrySpec
+        self._cache: Dict[str, GeometrySpec] = {}
         if openai_api_key:
             try:
                 import openai  # noqa: F401
                 self._openai_available = True
-                logger.info("OpenAI integration enabled")
+                logger.info("OpenAI integration enabled (model: gpt-4o)")
             except ImportError:
                 logger.warning("openai package not installed; using rule-based NLP")
 
     async def parse_text(self, text: str) -> GeometrySpec:
-        """Main entry point: parse text -> GeometrySpec."""
-        text_lower = text.lower().strip()
+        """Main entry point: parse text -> GeometrySpec.
+
+        Identical inputs are served from an in-memory cache so repeated UI
+        submissions skip the LLM round-trip entirely.
+        """
+        cache_key = text.strip()
+        if cache_key in self._cache:
+            logger.debug("NLPAgent: cache hit for %r", cache_key[:80])
+            return self._cache[cache_key]
+
+        text_lower = cache_key.lower()
         if self._openai_available and self.openai_api_key:
             try:
-                return await self._parse_with_openai(text)
+                result = await self._parse_with_openai(cache_key)
+                self._cache[cache_key] = result
+                return result
             except Exception as exc:
                 logger.warning("OpenAI parse failed, falling back to rules: %s", exc)
-        return self._parse_with_rules(text_lower, original=text)
+        result = self._parse_with_rules(text_lower, original=cache_key)
+        self._cache[cache_key] = result
+        return result
 
     # ------------------------------------------------------------------ #
     # Rule-based parser                                                    #
@@ -150,13 +199,14 @@ class NLPAgent:
         """Try to extract a single primitive from text."""
         if any(kw in text for kw in ["box", "cube", "block", "rectangular", "prism", "rect"]):
             return self._parse_box(text)
-        if any(kw in text for kw in ["cylinder", "tube", "pipe", "rod", "shaft"]):
+        # capsule / disc / disk / puck are cylinder-like shapes
+        if any(kw in text for kw in ["cylinder", "tube", "pipe", "rod", "shaft", "capsule", "disc", "disk", "puck"]):
             return self._parse_cylinder(text)
-        if any(kw in text for kw in ["sphere", "ball", "globe"]):
+        if any(kw in text for kw in ["sphere", "ball", "globe", "orb"]):
             return self._parse_sphere(text)
         if any(kw in text for kw in ["cone", "pyramid", "taper"]):
             return self._parse_cone(text)
-        if any(kw in text for kw in ["torus", "ring", "donut", "doughnut"]):
+        if any(kw in text for kw in ["torus", "ring", "donut", "doughnut", "annulus"]):
             return self._parse_torus(text)
         return None
 
@@ -272,42 +322,23 @@ class NLPAgent:
     # ------------------------------------------------------------------ #
 
     async def _parse_with_openai(self, text: str) -> GeometrySpec:
-        """Use GPT-4 to parse the natural language description."""
+        """Use GPT-4o to parse the natural language description."""
         import openai
-
-        prompt = f"""You are a CAD geometry parser. Given a natural language description of a 3D object,
-return a JSON object with this exact structure:
-{{
-  "primitives": [
-    {{
-      "type": "box|cylinder|sphere|cone|torus",
-      "dimensions": {{"width": N, "height": N, "depth": N}},
-      "name": "optional name"
-    }}
-  ],
-  "operations": [
-    {{
-      "operation": "union|intersection|subtraction",
-      "operand_a": 0,
-      "operand_b": 1,
-      "name": "optional"
-    }}
-  ],
-  "description": "original text"
-}}
-All dimensions must be in millimeters.
-
-User description: {text}
-
-JSON only, no markdown:"""
 
         client = openai.AsyncOpenAI(api_key=self.openai_api_key)
         response = await client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": text},
+            ],
+            temperature=0,
+            response_format={"type": "json_object"},
         )
         raw = response.choices[0].message.content.strip()
+        # Defensive: strip markdown code fences in case the model wraps output
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+        raw = re.sub(r"\s*```$", "", raw)
         data = json.loads(raw)
         primitives = [PrimitiveSpec(**p) for p in data.get("primitives", [])]
         operations = [BooleanOpSpec(**o) for o in data.get("operations", [])]
