@@ -1,0 +1,49 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: text-to-cad-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MODE=${MODE:-local}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","http://frontend:5173"]
+      - MAX_WORKERS=4
+      - EXPORT_DIR=/app/exports
+    volumes:
+      - exports_data:/app/exports
+      - ./backend:/app/backend:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-alpine
+    container_name: text-to-cad-frontend
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  exports_data:
