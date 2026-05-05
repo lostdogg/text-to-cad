@@ -146,6 +146,10 @@ interface CameraControllerProps {
   orbitRef: React.MutableRefObject<any>;
 }
 
+// Distance multiplier used to position the camera relative to the model's
+// largest dimension when fitting the view.
+const CAMERA_DISTANCE_MULTIPLIER = 1.8;
+
 function CameraController({ fitTrigger, modelBounds, orbitRef }: CameraControllerProps) {
   const { camera } = useThree();
 
@@ -153,13 +157,16 @@ function CameraController({ fitTrigger, modelBounds, orbitRef }: CameraControlle
     if (!fitTrigger || !modelBounds) return;
     const { center, size } = modelBounds;
     const maxDim = Math.max(...size);
-    const dist = maxDim * 1.8;
+    const dist = maxDim * CAMERA_DISTANCE_MULTIPLIER;
     camera.position.set(center[0] + dist, center[1] - dist, center[2] + dist);
     camera.lookAt(center[0], center[1], center[2]);
     if (orbitRef.current) {
       orbitRef.current.target.set(center[0], center[1], center[2]);
       orbitRef.current.update();
     }
+  // fitTrigger is the only value that should trigger re-runs;
+  // camera and orbitRef are stable refs and modelBounds is passed in
+  // only to be read within the effect — not to trigger it again.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitTrigger]);
 

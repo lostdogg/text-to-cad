@@ -359,7 +359,7 @@ export const useCADStore = create<CADStore>()(
       // Toasts                                                            //
       // ---------------------------------------------------------------- //
       addToast: (type, message) => {
-        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const id = crypto.randomUUID();
         set((s) => ({ toasts: [...s.toasts, { id, type, message }] }));
       },
       removeToast: (id) =>
