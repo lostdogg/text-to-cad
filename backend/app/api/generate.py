@@ -52,6 +52,8 @@ class GenerateResponse(BaseModel):
     agent_logs: List[str] = []
     success: bool = True
     error: Optional[str] = None
+    # Per-stage telemetry for observability and debugging
+    telemetry: Optional[Dict[str, Any]] = None
 
 
 # ------------------------------------------------------------------ #
@@ -85,6 +87,7 @@ async def generate_model(request: GenerateRequest) -> GenerateResponse:
         agent_logs=result.agent_logs,
         success=result.success,
         error=result.error,
+        telemetry=vars(result.telemetry) if result.telemetry else None,
     )
 
 

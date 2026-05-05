@@ -73,9 +73,17 @@ class GeometrySpec(BaseModel):
     operations: List[BooleanOpSpec] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     description: str = ""
+    # Parser diagnostics: confidence (0.0–1.0) and human-readable warnings
+    parse_confidence: float = Field(1.0, ge=0.0, le=1.0)
+    warnings: List[str] = Field(default_factory=list)
 
     def has_operations(self) -> bool:
         return len(self.operations) > 0
+
+    @property
+    def complexity_score(self) -> int:
+        """Simple complexity proxy: primitives + 2 × operations."""
+        return len(self.primitives) + 2 * len(self.operations)
 
 
 class MeshData(BaseModel):

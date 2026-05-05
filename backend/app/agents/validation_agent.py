@@ -137,6 +137,12 @@ class ValidationAgent:
         )
 
         has_errors = any(i.severity == IssueSeverity.ERROR for i in issues)
+
+        # ---------------------------------------------------------------- #
+        # Build ranked remediation hints                                    #
+        # ---------------------------------------------------------------- #
+        remediation_hints = self._build_remediation_hints(issues, mesh, mfg_type, min_wall)
+
         return ValidationResult(
             is_valid=not has_errors,
             issues=issues,
@@ -144,6 +150,7 @@ class ValidationAgent:
             manufacturing_type=manufacturing_type,
             min_wall_thickness=min_wall,
             max_overhang_angle=self._max_overhang_angle(mesh) if mfg_type == ManufacturingType.PRINTING_3D else None,
+            remediation_hints=remediation_hints,
         )
 
     def _check_manufacturing(
@@ -255,3 +262,79 @@ class ValidationAgent:
             return round(max(0.0, angle), 1)
         except Exception:
             return None
+
+    @staticmethod
+    def _build_remediation_hints(
+        issues: List[ValidationIssue],
+        mesh: trimesh.Trimesh,
+        mfg_type: Optional[ManufacturingType],
+        min_wall: Optional[float],
+    ) -> List[str]:
+        """Generate ranked, actionable remediation hints from validation issues."""
+        hints: List[str] = []
+
+        # Group by code for concise hints
+        codes = {i.code for i in issues}
+
+        # Error-priority hints first
+        if "EMPTY_MESH" in codes:
+            hints.append(
+                "[ERROR] Mesh has no geometry. Verify your shape description includes "
+                "recognizable primitives (box, cylinder, sphere, cone, torus)."
+            )
+
+        if "SELF_INTERSECTING" in codes:
+            hints.append(
+                "[ERROR] Self-intersecting mesh: re-run the boolean operation using the "
+                "'manifold' backend, or slightly offset the tool geometry to avoid "
+                "coplanar faces."
+            )
+
+        if "THIN_WALL" in codes:
+            min_w = min_wall or 0.0
+            process_label = mfg_type.value if mfg_type else "the selected process"
+            hints.append(
+                f"[ERROR] Wall thickness {min_w:.2f} mm is below the minimum for "
+                f"{process_label}. Increase wall thickness or choose a higher-resolution "
+                "process (e.g. SLA for thin features)."
+            )
+
+        # Warning-priority hints
+        if "NOT_WATERTIGHT" in codes:
+            hints.append(
+                "[WARNING] Non-watertight mesh: run the ManifoldResolver to fill open "
+                "boundaries before exporting for manufacturing."
+            )
+
+        if "NOT_MANIFOLD" in codes:
+            hints.append(
+                "[WARNING] Non-manifold geometry detected. Check for internal faces or "
+                "T-junctions introduced by boolean operations."
+            )
+
+        if "OVERHANG_ANGLE" in codes:
+            hints.append(
+                "[WARNING] Overhang angle exceeds 45°. Either add support structures, "
+                "reorient the part (Z-axis along tallest dimension), or switch to SLS "
+                "which does not require supports."
+            )
+
+        if "HIGH_ASPECT_RATIO" in codes:
+            hints.append(
+                "[WARNING] High aspect ratio detected. For CNC, add a stub/boss for "
+                "workholding or reduce the unsupported length to avoid chatter."
+            )
+
+        if "NOT_FLAT" in codes:
+            hints.append(
+                "[WARNING] Laser cutting requires a flat 2D profile. Use the top-down "
+                "(XY) projection, or break the model into flat sub-parts."
+            )
+
+        if "DEGENERATE_FACES" in codes:
+            hints.append(
+                "[INFO] Degenerate faces found. Run remove_degenerate_faces() and "
+                "merge_vertices() before exporting."
+            )
+
+        return hints

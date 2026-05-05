@@ -22,6 +22,10 @@ class ManifoldResult:
     issues_found: List[str] = field(default_factory=list)
     issues_fixed: List[str] = field(default_factory=list)
     is_watertight: bool = False
+    # Diagnostic details for observability / API consumers
+    open_boundary_edge_count: int = 0
+    non_manifold_edge_count: int = 0
+    self_intersecting: bool = False
 
 
 class ManifoldResolver:
@@ -35,16 +39,46 @@ class ManifoldResolver:
         # ---------------------------------------------------------------- #
         # Diagnose                                                          #
         # ---------------------------------------------------------------- #
+        open_boundary_edges = 0
+        non_manifold_edges = 0
+
         if not mesh.is_watertight:
             issues_found.append("mesh_not_watertight")
+            try:
+                open_boundary_edges = int(len(mesh.outline()))
+            except Exception:
+                pass
+
         if mesh.faces.shape[0] == 0:
             issues_found.append("no_faces")
+
         if hasattr(mesh, "is_winding_consistent") and not mesh.is_winding_consistent:
             issues_found.append("inconsistent_winding")
 
         degenerate = self._degenerate_face_count(mesh)
         if degenerate > 0:
             issues_found.append(f"degenerate_faces:{degenerate}")
+
+        # Non-manifold edges (edges shared by more than 2 faces)
+        try:
+            unique_edges, edge_counts = np.unique(
+                np.sort(mesh.edges_sorted, axis=1), axis=0, return_counts=True
+            )
+            non_manifold_edges = int(np.sum(edge_counts > 2))
+            if non_manifold_edges > 0:
+                issues_found.append(f"non_manifold_edges:{non_manifold_edges}")
+        except Exception:
+            pass
+
+        # Self-intersections (only for small meshes — expensive)
+        self_intersecting = False
+        if len(mesh.faces) < 2000:
+            try:
+                self_intersecting = bool(mesh.is_self_intersecting)
+                if self_intersecting:
+                    issues_found.append("self_intersecting")
+            except Exception:
+                pass
 
         # ---------------------------------------------------------------- #
         # Fix: remove degenerate / duplicate faces                         #
@@ -114,6 +148,9 @@ class ManifoldResolver:
             issues_found=issues_found,
             issues_fixed=issues_fixed,
             is_watertight=mesh.is_watertight,
+            open_boundary_edge_count=open_boundary_edges,
+            non_manifold_edge_count=non_manifold_edges,
+            self_intersecting=self_intersecting,
         )
 
     # ------------------------------------------------------------------ #
