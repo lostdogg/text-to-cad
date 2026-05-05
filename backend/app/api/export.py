@@ -39,6 +39,24 @@ def _export_dir() -> str:
     return d
 
 
+def _safe_model_id(model_id: str) -> str:
+    """Sanitize model_id to prevent path traversal: allow only alphanumerics, dashes, underscores."""
+    import re
+    sanitized = re.sub(r"[^a-zA-Z0-9_\-]", "_", model_id)
+    return sanitized[:128]
+
+
+def _safe_export_path(model_id: str, extension: str) -> str:
+    """Return an absolute export path that cannot escape the export directory."""
+    safe_id = _safe_model_id(model_id)
+    base = _export_dir()
+    path = os.path.normpath(os.path.join(base, f"{safe_id}.{extension}"))
+    # Guard against any remaining traversal
+    if not path.startswith(base):
+        raise HTTPException(status_code=400, detail="Invalid model_id")
+    return path
+
+
 # ------------------------------------------------------------------ #
 # Mesh exports                                                        #
 # ------------------------------------------------------------------ #
@@ -46,7 +64,7 @@ def _export_dir() -> str:
 @router.post("/stl/{model_id}")
 async def export_stl(model_id: str, binary: bool = True):
     mesh, model = _get_mesh(model_id)
-    filepath = os.path.join(_export_dir(), f"{model_id}.stl")
+    filepath = _safe_export_path(model_id, "stl")
     exporter.export_stl(mesh, filepath, binary=binary)
     return FileResponse(filepath, media_type="application/octet-stream",
                         filename=f"{model.name}.stl")
@@ -55,7 +73,7 @@ async def export_stl(model_id: str, binary: bool = True):
 @router.post("/obj/{model_id}")
 async def export_obj(model_id: str):
     mesh, model = _get_mesh(model_id)
-    filepath = os.path.join(_export_dir(), f"{model_id}.obj")
+    filepath = _safe_export_path(model_id, "obj")
     exporter.export_obj(mesh, filepath)
     return FileResponse(filepath, media_type="text/plain",
                         filename=f"{model.name}.obj")
@@ -64,7 +82,7 @@ async def export_obj(model_id: str):
 @router.post("/step/{model_id}")
 async def export_step(model_id: str):
     mesh, model = _get_mesh(model_id)
-    filepath = os.path.join(_export_dir(), f"{model_id}.step")
+    filepath = _safe_export_path(model_id, "step")
     exporter.export_step(mesh, filepath)
     return FileResponse(filepath, media_type="text/plain",
                         filename=f"{model.name}.step")
@@ -90,7 +108,7 @@ class LaserExportRequest(BaseModel):
 async def export_gcode_cnc(model_id: str, request: Optional[CNCExportRequest] = None):
     mesh, model = _get_mesh(model_id)
     params = (request.params if request and request.params else None) or CNCParams()
-    filepath = os.path.join(_export_dir(), f"{model_id}_cnc.gcode")
+    filepath = _safe_export_path(model_id, "cnc.gcode")
     exporter.export_gcode_cnc(mesh, filepath, params)
     return FileResponse(filepath, media_type="text/plain",
                         filename=f"{model.name}_cnc.gcode")
@@ -100,7 +118,7 @@ async def export_gcode_cnc(model_id: str, request: Optional[CNCExportRequest] = 
 async def export_gcode_3dprint(model_id: str, request: Optional[PrintExportRequest] = None):
     mesh, model = _get_mesh(model_id)
     params = (request.params if request and request.params else None) or PrintParams()
-    filepath = os.path.join(_export_dir(), f"{model_id}_print.gcode")
+    filepath = _safe_export_path(model_id, "print.gcode")
     exporter.export_gcode_3dprint(mesh, filepath, params)
     return FileResponse(filepath, media_type="text/plain",
                         filename=f"{model.name}_print.gcode")
@@ -113,7 +131,7 @@ async def export_gcode_laser(model_id: str, request: Optional[LaserExportRequest
     from ..manufacturing.laser_cutting import LaserOptimizer
     opt = LaserOptimizer()
     profile = opt.extract_profile(mesh)
-    filepath = os.path.join(_export_dir(), f"{model_id}_laser.gcode")
+    filepath = _safe_export_path(model_id, "laser.gcode")
     exporter.export_gcode_laser(profile, filepath, params)
     return FileResponse(filepath, media_type="text/plain",
                         filename=f"{model.name}_laser.gcode")
