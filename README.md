@@ -30,11 +30,23 @@ AI-powered text-to-3D-CAD generation with multi-agent architecture, manufacturin
    └────── X+ (Right)
 ```
 
+## Prerequisites
+
+| Tool | Minimum version |
+|------|----------------|
+| Python | 3.11+ |
+| Node.js | 20+ |
+| Docker + Docker Compose | any recent version (Option A only) |
+
 ## Quick Start
 
 ### Option A — Docker (recommended)
 
 ```bash
+# 1. Copy and edit environment variables (optional — required only for AI keys)
+cp .env.example .env
+
+# 2. Build and start all services
 docker-compose up --build
 ```
 
@@ -44,27 +56,48 @@ docker-compose up --build
 
 ### Option B — Local (Windows / Linux)
 
-**Backend:**
+**1. Set up environment variables**
+```bash
+cp .env.example .env
+# edit .env to set any optional API keys
+```
+
+**2. Backend**
 ```bash
 pip install -r requirements.txt
 uvicorn backend.app.main:app --reload --port 8000
 ```
 
-**Frontend:**
+**3. Frontend** (in a separate terminal)
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-### Optional — OpenAI GPT-4 NLP
+- Backend API: http://localhost:8000
+- Frontend:    http://localhost:5173
+- API Docs:    http://localhost:8000/docs
 
-Add to `.env`:
-```
+### Optional — AI NLP Providers
+
+The system works out of the box with the built-in rule-based NLP parser. To enable a cloud AI model, add the relevant key to `.env`:
+
+```bash
+# OpenAI (GPT-4, GPT-4o, …)
 OPENAI_API_KEY=sk-...
+
+# Anthropic (Claude)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Google AI / Gemini
+GOOGLE_API_KEY=AIza...
+
+# Ollama (local models — change URL if Ollama runs on another host)
+OLLAMA_BASE_URL=http://localhost:11434/v1
 ```
 
-Without it the system uses the built-in rule-based NLP parser.
+You can also supply your API key directly from the UI without restarting the server.
 
 ## API Reference
 
