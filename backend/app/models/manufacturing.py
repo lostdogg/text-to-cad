@@ -112,6 +112,8 @@ class ValidationResult(BaseModel):
     manufacturing_type: Optional[str] = None
     min_wall_thickness: Optional[float] = None
     max_overhang_angle: Optional[float] = None
+    # Ranked, actionable hints ordered by priority (highest-impact first)
+    remediation_hints: List[str] = Field(default_factory=list)
 
     def error_count(self) -> int:
         return sum(1 for i in self.issues if i.severity == IssueSeverity.ERROR)

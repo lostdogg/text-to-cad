@@ -56,6 +56,8 @@ Rules:
 - All dimensions must be in millimeters.
 - Use position/rotation/scale in transform when spatial relationships are described \
 (e.g. "on top of", "offset by", "rotated 45 degrees").
+- For patterns like "4 holes at corners", create 4 primitives positioned at the \
+corners of the base shape.
 - Do NOT include markdown, code fences, or any text outside the JSON object.\
 """
 
@@ -81,6 +83,77 @@ SINGLE_DIM = re.compile(
     re.IGNORECASE,
 )
 
+# Corner-hole pattern: "4 5mm holes in the corners" or "four 5mm diameter holes at corners"
+_CORNER_HOLES_RE = re.compile(
+    r"(\d+|four|three|two|six|eight)\s+(?:x\s+)?(\d+(?:\.\d+)?)\s*(?:mm|cm)?\s*"
+    r"(?:diameter\s+|dia\.?\s+|radius\s+)?(?:holes?|bores?|through[- ]holes?|counterbores?)\s*"
+    r"(?:in|at|on|through)?\s*(?:the\s+)?(?:corners?|edges?|sides?)",
+    re.IGNORECASE,
+)
+
+# Dimensionless variant: "4 holes in the corners" (no explicit hole size)
+_CORNER_HOLES_NO_DIM_RE = re.compile(
+    r"(\d+|four|three|two|six|eight)\s+"
+    r"(?:holes?|bores?|through[- ]holes?)\s*"
+    r"(?:in|at|on)?\s*(?:the\s+)?(?:corners?|edges?)",
+    re.IGNORECASE,
+)
+
+# "N holes" fallback (no corner/positional qualifier) – weaker match
+_N_HOLES_RE = re.compile(
+    r"(\d+|four|three|two|six|eight)\s+(?:x\s+)?(\d+(?:\.\d+)?)\s*(?:mm|cm)?\s*"
+    r"(?:diameter\s+|dia\.?\s+)?(?:holes?|bores?)",
+    re.IGNORECASE,
+)
+
+# Named-word numbers
+_WORD_TO_NUM: Dict[str, int] = {
+    "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
+
+# Spatial relationship keywords
+_SPATIAL_ON_TOP = re.compile(r"\bon\s+top\s+of\b|\babove\b|\bon\s+top\b", re.IGNORECASE)
+_SPATIAL_BELOW = re.compile(r"\bbelow\b|\bunder\b|\bunderneath\b", re.IGNORECASE)
+_SPATIAL_CENTERED = re.compile(r"\bcentered?\b|\bin\s+the\s+cent(?:er|re)\b|\bmiddle\b", re.IGNORECASE)
+_SPATIAL_OFFSET = re.compile(
+    r"offset\s+by\s+(\d+(?:\.\d+)?)\s*(mm|cm|m|in)?", re.IGNORECASE
+)
+_ROTATION_RE = re.compile(
+    r"rotated?\s+(\d+(?:\.\d+)?)\s*(?:degrees?|deg|°)?\s*(?:about|around|along)?\s*([xXyYzZ])?",
+    re.IGNORECASE,
+)
+
+# ── Sentence-splitting patterns used in _parse_with_rules ──────────────────
+# Always active: explicit delimiters, "from", and spatial relationship phrases.
+# Each spatial phrase separates two distinct primitives.
+_SPLIT_BASE = re.compile(
+    r"\bthen\b"            # sequence connector
+    r"|,|;"               # punctuation delimiters
+    r"|\bfrom\b"          # subtraction "A from B"
+    r"|\bout\s+of\b"      # "cut A out of B"
+    r"|\bon\s+top\s+of\b" # "A on top of B"
+    r"|\babove\b"         # "A above B"
+    r"|\bbelow\b"         # "A below B"
+    r"|\bunder\b",        # "A under B"
+    re.IGNORECASE,
+)
+
+# Extra splits for subtraction contexts: "and", "in a/an/the", "inside a/an/the".
+_SPLIT_SUBTRACT_EXTRA = re.compile(
+    r"\band\b"
+    r"|\bin\s+(?:a|an|the)\b"       # "drill a hole in a box"
+    r"|\binside\s+(?:a|an|the)\b",  # "sphere inside a cube"
+    re.IGNORECASE,
+)
+
+# Extra splits for union/intersection contexts: "and", "with".
+_SPLIT_UNION_INTERSECT_EXTRA = re.compile(
+    r"\band\b"
+    r"|\bwith\b",   # "merge A with B"
+    re.IGNORECASE,
+)
+
 
 def _strip_json_fences(raw: str) -> str:
     """Remove markdown code fences that some models wrap around JSON output."""
@@ -97,6 +170,14 @@ def _build_geometry_spec_from_dict(data: dict, original_text: str) -> GeometrySp
         operations=operations,
         description=data.get("description", original_text),
     )
+
+
+def _word_to_int(s: str) -> int:
+    """Convert a word-number or digit string to int."""
+    try:
+        return int(s)
+    except ValueError:
+        return _WORD_TO_NUM.get(s.lower(), 1)
 
 
 class NLPAgent:
@@ -180,22 +261,61 @@ class NLPAgent:
     def _parse_with_rules(self, text: str, original: str = "") -> GeometrySpec:
         primitives: List[PrimitiveSpec] = []
         operations: List[BooleanOpSpec] = []
+        warnings: List[str] = []
+        confidence: float = 1.0
 
         # Check for boolean operations first
         has_subtract = any(kw in text for kw in ["subtract", "cut", "remove", "drill", "hole", "minus"])
         has_union = any(kw in text for kw in ["union", "combine", "merge", "add", "attach"])
         has_intersect = any(kw in text for kw in ["intersect", "intersection", "overlap", "common"])
 
-        # Split compound sentences — also split on "from" for boolean patterns like
-        # "subtract cylinder FROM cube" / "cut hole FROM box"
-        sentences = re.split(r"\band\b|\bthen\b|,|;|\bfrom\b", text)
-        prim_idx = 0
+        # ---------------------------------------------------------------- #
+        # Pattern: N holes at corners (mounting bracket / panel patterns)  #
+        # ---------------------------------------------------------------- #
+        corner_holes = self._try_extract_corner_holes(text)
+        if corner_holes:
+            base_prims, hole_prims, hole_ops = corner_holes
+            primitives.extend(base_prims)
+            primitives.extend(hole_prims)
+            operations.extend(hole_ops)
+            return GeometrySpec(
+                primitives=primitives,
+                operations=operations,
+                description=original or text,
+                parse_confidence=0.85,
+                warnings=warnings,
+            )
+
+        # ---------------------------------------------------------------- #
+        # Sentence splitting strategy                                       #
+        # Base splitters: always active (explicit delimiters + "from")      #
+        # Boolean splitters: only when boolean keywords are present         #
+        # Spatial splitters: always active (each is a separate primitive)   #
+        # ---------------------------------------------------------------- #
+        sentences = _SPLIT_BASE.split(text)
+
+        if has_subtract:
+            # Also split on "and" and "in a/an/the" for subtraction patterns
+            # (e.g. "drill a hole in a box" → ["drill a hole", "box"])
+            sentences = [
+                s for seg in sentences
+                for s in _SPLIT_SUBTRACT_EXTRA.split(seg)
+            ]
+        elif has_union or has_intersect:
+            # Split on "and" and "with" for union/intersection patterns
+            # (e.g. "merge a sphere with a box" → ["merge a sphere", "a box"])
+            sentences = [
+                s for seg in sentences
+                for s in _SPLIT_UNION_INTERSECT_EXTRA.split(seg)
+            ]
+        # NOTE: when no boolean keywords, intentionally do NOT split on "and"
+        # so that "torus with major radius Xmm and minor radius Ymm" stays whole.
+
         for sentence in sentences:
             sentence = sentence.strip()
             prim = self._extract_primitive(sentence)
             if prim is not None:
                 primitives.append(prim)
-                prim_idx += 1
 
         # If no primitives found, try the full text
         if not primitives:
@@ -203,16 +323,47 @@ class NLPAgent:
             if prim:
                 primitives.append(prim)
 
-        # Build boolean operations
+        # ---------------------------------------------------------------- #
+        # Apply spatial transforms to second+ primitives                   #
+        # ---------------------------------------------------------------- #
+        if len(primitives) >= 2:
+            self._apply_spatial_hints(text, primitives)
+
+        # ---------------------------------------------------------------- #
+        # Build boolean operations                                         #
+        # ---------------------------------------------------------------- #
         if has_subtract and len(primitives) >= 2:
-            operations.append(
-                BooleanOpSpec(
-                    operation=BooleanOpType.SUBTRACTION,
-                    operand_a=0,
-                    operand_b=1,
-                    name="subtraction",
+            # Build a chain of subtractions: ((prim0 - prim1) - prim2) ...
+            op_idx = len(primitives)  # next available result index
+            if len(primitives) == 2:
+                operations.append(
+                    BooleanOpSpec(
+                        operation=BooleanOpType.SUBTRACTION,
+                        operand_a=0,
+                        operand_b=1,
+                        name="subtraction",
+                    )
                 )
-            )
+            else:
+                # Chain: result0 = prim0 - prim1, result1 = result0 - prim2, ...
+                operations.append(
+                    BooleanOpSpec(
+                        operation=BooleanOpType.SUBTRACTION,
+                        operand_a=0,
+                        operand_b=1,
+                        name="subtraction_0",
+                    )
+                )
+                for i in range(2, len(primitives)):
+                    operations.append(
+                        BooleanOpSpec(
+                            operation=BooleanOpType.SUBTRACTION,
+                            operand_a=op_idx,
+                            operand_b=i,
+                            name=f"subtraction_{i - 1}",
+                        )
+                    )
+                    op_idx += 1
         elif has_union and len(primitives) >= 2:
             operations.append(
                 BooleanOpSpec(
@@ -232,29 +383,264 @@ class NLPAgent:
                 )
             )
 
-        # Default: if only one primitive and no operation, wrap it
+        # ---------------------------------------------------------------- #
+        # Fallback / confidence                                            #
+        # ---------------------------------------------------------------- #
         if not primitives:
-            # Fallback to a 20mm cube
             logger.warning("Could not parse primitives; using default 20mm cube")
+            warnings.append(
+                "No recognizable shape found in the description; "
+                "defaulting to a 20mm cube. Try using keywords like "
+                "'box', 'cylinder', 'sphere', 'cone', or 'torus'."
+            )
             primitives.append(
                 PrimitiveSpec(
                     type=PrimitiveType.BOX,
                     dimensions={"width": 20.0, "height": 20.0, "depth": 20.0},
                 )
             )
+            confidence = 0.1
+        else:
+            confidence = self._compute_confidence(text, primitives, operations)
+
+        if confidence < 0.5:
+            warnings.append(
+                "Low-confidence parse: the description may be ambiguous. "
+                "Consider rephrasing with explicit dimensions and shape names."
+            )
 
         return GeometrySpec(
             primitives=primitives,
             operations=operations,
             description=original or text,
+            parse_confidence=round(confidence, 3),
+            warnings=warnings,
         )
+
+    # ------------------------------------------------------------------ #
+    # Corner-hole pattern extraction                                       #
+    # ------------------------------------------------------------------ #
+
+    def _try_extract_corner_holes(
+        self, text: str
+    ) -> Optional[Tuple[List[PrimitiveSpec], List[PrimitiveSpec], List[BooleanOpSpec]]]:
+        """Detect patterns like '4 x 5mm holes in the corners' and build
+        a base-primitive + N positioned cylinders + N subtraction operations."""
+        m = _CORNER_HOLES_RE.search(text)
+        m_nodim = _CORNER_HOLES_NO_DIM_RE.search(text) if m is None else None
+        m_fallback = _N_HOLES_RE.search(text) if m is None and m_nodim is None else None
+
+        if m is None and m_nodim is None and m_fallback is None:
+            return None
+
+        if m is not None:
+            n_holes = _word_to_int(m.group(1))
+            hole_raw = float(m.group(2))
+            # Extract unit from the match context, not the full text, to avoid
+            # false "in" matches from positional phrases like "holes in the corners"
+            unit_m = re.search(r"\d+(?:\.\d+)?\s*(mm|cm|m|in|inch|inches)", m.group(0), re.IGNORECASE)
+            unit = unit_m.group(1) if unit_m else "mm"
+            hole_radius = self._to_mm(hole_raw, unit) / 2.0
+        elif m_nodim is not None:
+            n_holes = _word_to_int(m_nodim.group(1))
+            # Default hole radius when not specified
+            hole_radius = 3.0
+        else:
+            n_holes = _word_to_int(m_fallback.group(1))
+            hole_raw = float(m_fallback.group(2))
+            unit_m = re.search(r"\d+(?:\.\d+)?\s*(mm|cm|m|in|inch|inches)", m_fallback.group(0), re.IGNORECASE)
+            unit = unit_m.group(1) if unit_m else "mm"
+            hole_radius = self._to_mm(hole_raw, unit) / 2.0
+
+        # Try to find a base shape
+        base_sentences = re.split(r"\bwith\b", text, maxsplit=1)
+        base_text = base_sentences[0].strip()
+        base_prim = self._extract_primitive(base_text) if base_text else None
+
+        if base_prim is None:
+            # Try full text without hole clause
+            stripped = re.sub(
+                _CORNER_HOLES_RE.pattern + "|" + _CORNER_HOLES_NO_DIM_RE.pattern,
+                "",
+                text,
+                flags=re.IGNORECASE,
+            )
+            base_prim = self._extract_primitive(stripped.strip())
+        if base_prim is None:
+            # Default bracket plate
+            base_prim = PrimitiveSpec(
+                type=PrimitiveType.BOX,
+                dimensions={"width": 50.0, "height": 30.0, "depth": 10.0},
+                name="base",
+            )
+
+        base_prims = [base_prim]
+        d = base_prim.dimensions
+        w = d.get("width", 50.0) / 2.0
+        dep = d.get("depth", 30.0) / 2.0
+        h = d.get("height", d.get("depth", 10.0))
+
+        # Generate hole cylinder height slightly taller than base for clean boolean
+        cyl_h = h + 2.0
+
+        # Corner positions depend on how many holes are requested
+        if n_holes == 4:
+            offsets = [(-w * 0.7, -dep * 0.7), (w * 0.7, -dep * 0.7),
+                       (-w * 0.7, dep * 0.7), (w * 0.7, dep * 0.7)]
+        elif n_holes == 2:
+            offsets = [(-w * 0.7, 0.0), (w * 0.7, 0.0)]
+        elif n_holes == 3:
+            offsets = [(-w * 0.7, -dep * 0.7), (w * 0.7, -dep * 0.7), (0.0, dep * 0.7)]
+        elif n_holes == 6:
+            offsets = [(-w * 0.7, -dep * 0.7), (0.0, -dep * 0.7), (w * 0.7, -dep * 0.7),
+                       (-w * 0.7, dep * 0.7), (0.0, dep * 0.7), (w * 0.7, dep * 0.7)]
+        else:
+            # Generic: evenly space holes across width
+            offsets = [((-w * 0.7) + i * (w * 1.4 / max(n_holes - 1, 1)), 0.0)
+                       for i in range(n_holes)]
+
+        hole_prims: List[PrimitiveSpec] = []
+        for i, (ox, oy) in enumerate(offsets):
+            t = Transform(
+                position=Vector3(x=ox, y=oy, z=0.0),
+            )
+            hole_prims.append(
+                PrimitiveSpec(
+                    type=PrimitiveType.CYLINDER,
+                    dimensions={"radius": hole_radius, "height": cyl_h},
+                    transform=t,
+                    name=f"hole_{i + 1}",
+                )
+            )
+
+        # Build subtraction chain: result = base - hole1 - hole2 ...
+        hole_ops: List[BooleanOpSpec] = []
+        # Index 0 = base, indices 1..n = holes
+        prev_result = 0
+        op_result_idx = 1 + len(hole_prims)  # after all primitives
+        for i in range(len(hole_prims)):
+            hole_ops.append(
+                BooleanOpSpec(
+                    operation=BooleanOpType.SUBTRACTION,
+                    operand_a=prev_result,
+                    operand_b=i + 1,
+                    name=f"drill_hole_{i + 1}",
+                )
+            )
+            prev_result = op_result_idx
+            op_result_idx += 1
+
+        return base_prims, hole_prims, hole_ops
+
+    # ------------------------------------------------------------------ #
+    # Spatial transform inference                                          #
+    # ------------------------------------------------------------------ #
+
+    def _apply_spatial_hints(self, text: str, primitives: List[PrimitiveSpec]) -> None:
+        """Mutate transforms of primitives based on spatial keywords.
+
+        In phrases like "A on top of B", A is primitives[0] and B is primitives[1].
+        A gets a positive Z offset so it sits on top of B.
+        """
+        if len(primitives) < 2:
+            return
+
+        if _SPATIAL_ON_TOP.search(text):
+            # "A on top of B": primitives[0] (A) is placed on top of primitives[1] (B)
+            base = primitives[1]
+            placed = primitives[0]
+            base_h = base.dimensions.get("height", base.dimensions.get("depth", 10.0))
+            placed_h = placed.dimensions.get(
+                "height", placed.dimensions.get("radius", 5.0) * 2
+            )
+            placed.transform.position.z = base_h / 2.0 + placed_h / 2.0
+            return
+
+        if _SPATIAL_BELOW.search(text):
+            base = primitives[1]
+            placed = primitives[0]
+            base_h = base.dimensions.get("height", base.dimensions.get("depth", 10.0))
+            placed_h = placed.dimensions.get(
+                "height", placed.dimensions.get("radius", 5.0) * 2
+            )
+            placed.transform.position.z = -(base_h / 2.0 + placed_h / 2.0)
+            return
+
+        # For other hints, apply to all non-first primitives
+        for prim in primitives[1:]:
+            if _SPATIAL_CENTERED.search(text):
+                prim.transform.position.x = 0.0
+                prim.transform.position.y = 0.0
+
+            offset_m = _SPATIAL_OFFSET.search(text)
+            if offset_m:
+                unit = offset_m.group(2) or "mm"
+                offset_val = self._to_mm(float(offset_m.group(1)), unit)
+                prim.transform.position.x = offset_val
+
+            rot_m = _ROTATION_RE.search(text)
+            if rot_m:
+                angle = float(rot_m.group(1))
+                axis = (rot_m.group(2) or "z").lower()
+                if axis == "x":
+                    prim.transform.rotation.x = angle
+                elif axis == "y":
+                    prim.transform.rotation.y = angle
+                else:
+                    prim.transform.rotation.z = angle
+
+    # ------------------------------------------------------------------ #
+    # Confidence scoring                                                   #
+    # ------------------------------------------------------------------ #
+
+    def _compute_confidence(
+        self,
+        text: str,
+        primitives: List[PrimitiveSpec],
+        operations: List[BooleanOpSpec],
+    ) -> float:
+        """Heuristic confidence: higher when explicit shape names and dimensions found."""
+        score = 0.5
+
+        # Reward each primitive that has a specific shape keyword in the text
+        shape_keywords = {
+            "box": ["box", "cube", "block", "rectangular", "prism"],
+            "cylinder": ["cylinder", "tube", "pipe", "rod", "shaft", "disc", "disk"],
+            "sphere": ["sphere", "ball", "globe", "orb"],
+            "cone": ["cone", "pyramid", "taper"],
+            "torus": ["torus", "ring", "donut", "doughnut"],
+        }
+        for prim in primitives:
+            ptype = str(prim.type).lower()
+            kws = shape_keywords.get(ptype, [])
+            if any(kw in text for kw in kws):
+                score += 0.15
+
+        # Reward explicit dimensions
+        if re.search(r"\d+\s*(?:mm|cm|m|in|inch)", text, re.IGNORECASE):
+            score += 0.15
+
+        # Reward explicit boolean keywords
+        bool_kws = ["subtract", "union", "intersect", "combine", "cut", "merge", "drill"]
+        if any(kw in text for kw in bool_kws) and operations:
+            score += 0.1
+
+        # Penalise very short or keyword-sparse text
+        if len(text.split()) < 3:
+            score -= 0.2
+
+        return max(0.05, min(1.0, score))
+
+    # ------------------------------------------------------------------ #
+    # Primitive extractors                                                 #
+    # ------------------------------------------------------------------ #
 
     def _extract_primitive(self, text: str) -> Optional[PrimitiveSpec]:
         """Try to extract a single primitive from text."""
-        if any(kw in text for kw in ["box", "cube", "block", "rectangular", "prism", "rect"]):
+        if any(kw in text for kw in ["box", "cube", "block", "rectangular", "prism", "rect", "bracket", "plate", "panel"]):
             return self._parse_box(text)
-        # capsule / disc / disk / puck are cylinder-like shapes
-        if any(kw in text for kw in ["cylinder", "tube", "pipe", "rod", "shaft", "capsule", "disc", "disk", "puck"]):
+        # capsule / disc / disk / puck / hole / bore are cylinder-like shapes
+        if any(kw in text for kw in ["cylinder", "tube", "pipe", "rod", "shaft", "capsule", "disc", "disk", "puck", "hole", "bore", "opening"]):
             return self._parse_cylinder(text)
         if any(kw in text for kw in ["sphere", "ball", "globe", "orb"]):
             return self._parse_sphere(text)
@@ -288,6 +674,9 @@ class NLPAgent:
         h_match = re.search(r"height\s+(\d+(?:\.\d+)?)", text, re.IGNORECASE)
         if h_match:
             height = self._to_mm(float(h_match.group(1)), self._find_unit(text))
+        r_match = re.search(r"\bradius\s+(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+        if r_match:
+            radius = self._to_mm(float(r_match.group(1)), self._find_unit(text))
         return PrimitiveSpec(
             type=PrimitiveType.CYLINDER,
             dimensions={"radius": radius, "height": height},
@@ -299,6 +688,9 @@ class NLPAgent:
         radius = dims[0] / 2.0 if dims else 10.0
         if "radius" in text:
             radius = dims[0] if dims else 10.0
+        r_match = re.search(r"\bradius\s+(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+        if r_match:
+            radius = self._to_mm(float(r_match.group(1)), self._find_unit(text))
         return PrimitiveSpec(
             type=PrimitiveType.SPHERE,
             dimensions={"radius": radius},
@@ -317,8 +709,16 @@ class NLPAgent:
 
     def _parse_torus(self, text: str) -> PrimitiveSpec:
         dims = self._extract_dims(text)
-        major_r = dims[0] if dims else 15.0
-        minor_r = dims[1] if len(dims) > 1 else major_r * 0.25
+        # Support named major/minor radius extraction
+        major_m = re.search(r"major\s+radius\s+(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+        minor_m = re.search(r"minor\s+radius\s+(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+        unit = self._find_unit(text)
+        if major_m and minor_m:
+            major_r = self._to_mm(float(major_m.group(1)), unit)
+            minor_r = self._to_mm(float(minor_m.group(1)), unit)
+        else:
+            major_r = dims[0] if dims else 15.0
+            minor_r = dims[1] if len(dims) > 1 else major_r * 0.25
         return PrimitiveSpec(
             type=PrimitiveType.TORUS,
             dimensions={"major_radius": major_r, "minor_radius": minor_r},
@@ -332,15 +732,15 @@ class NLPAgent:
     def _extract_three_dims(self, text: str) -> List[float]:
         """Extract up to three dimensions from 'NxNxN unit' patterns."""
         unit = self._find_unit(text)
-        # Try NxNxN
+        # Try NxNxN  (ASCII x/X, *, × Unicode)
         m = re.search(
-            r"(\d+(?:\.\d+)?)\s*[xX\*]\s*(\d+(?:\.\d+)?)\s*[xX\*]\s*(\d+(?:\.\d+)?)",
+            r"(\d+(?:\.\d+)?)\s*[xX\*×]\s*(\d+(?:\.\d+)?)\s*[xX\*×]\s*(\d+(?:\.\d+)?)",
             text,
         )
         if m:
             return [self._to_mm(float(m.group(i)), unit) for i in (1, 2, 3)]
         # Try NxN
-        m = re.search(r"(\d+(?:\.\d+)?)\s*[xX\*]\s*(\d+(?:\.\d+)?)", text)
+        m = re.search(r"(\d+(?:\.\d+)?)\s*[xX\*×]\s*(\d+(?:\.\d+)?)", text)
         if m:
             v1 = self._to_mm(float(m.group(1)), unit)
             v2 = self._to_mm(float(m.group(2)), unit)
@@ -361,9 +761,29 @@ class NLPAgent:
 
     @staticmethod
     def _find_unit(text: str) -> str:
-        for unit in ["inches", "inch", "in", "cm", "mm", "m"]:
-            if unit in text:
-                return unit
+        """Detect unit of measurement.
+
+        Uses word boundaries for wordy units like 'in'/'inch'/'inches' so that
+        words like 'cylinder', 'aluminum', 'machine', 'inside', etc. don't
+        accidentally trigger the inch conversion.  Metric abbreviations are
+        safe to check without boundaries since 'mm'/'cm' rarely appear inside
+        English words.
+        """
+        # Priority: longer/more-specific first
+        if re.search(r"\binches\b", text, re.IGNORECASE):
+            return "inches"
+        if re.search(r"\binch\b", text, re.IGNORECASE):
+            return "inch"
+        if re.search(r"\bin\b", text, re.IGNORECASE):
+            return "in"
+        # Metric abbreviations — simple substring is safe
+        if "mm" in text.lower():
+            return "mm"
+        if "cm" in text.lower():
+            return "cm"
+        # Standalone meter — must be preceded by a digit (to avoid lone "m" in words)
+        if re.search(r"\d\s*m\b(?!m)", text, re.IGNORECASE):
+            return "m"
         return "mm"
 
     @staticmethod
