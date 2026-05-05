@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -60,7 +60,7 @@ class CollaborationManager:
                 "participants": {},
                 "model_history": [],
                 "chat": [],
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
         return self.sessions[session_id]
 
@@ -77,7 +77,7 @@ class CollaborationManager:
             participant_id=participant_id,
             name=name or f"User-{participant_id}",
             color=CURSOR_COLORS[color_index],
-            joined_at=datetime.utcnow().isoformat(),
+            joined_at=datetime.now(timezone.utc).isoformat(),
         )
         session["participants"][participant_id] = participant.dict()
         self.connections[participant_id] = websocket
@@ -148,7 +148,7 @@ async def collaborate_ws(websocket: WebSocket, session_id: str):
         "session_id": session_id,
         "participant": participant.dict(),
         "session_state": manager.get_session_state(session_id),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }))
 
     # Notify others
@@ -156,7 +156,7 @@ async def collaborate_ws(websocket: WebSocket, session_id: str):
         "event_type": "participant_joined",
         "session_id": session_id,
         "participant": participant.dict(),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }, exclude=participant.participant_id)
 
     try:
@@ -168,7 +168,7 @@ async def collaborate_ws(websocket: WebSocket, session_id: str):
                 continue
 
             event_type = event.get("event_type", "unknown")
-            ts = datetime.utcnow().isoformat()
+            ts = datetime.now(timezone.utc).isoformat()
             event["participant_id"] = participant.participant_id
             event["timestamp"] = ts
 
@@ -220,5 +220,5 @@ async def collaborate_ws(websocket: WebSocket, session_id: str):
             "event_type": "participant_left",
             "session_id": session_id,
             "participant_id": participant.participant_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })

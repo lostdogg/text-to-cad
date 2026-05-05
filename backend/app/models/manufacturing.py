@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ManufacturingType(str, Enum):
@@ -23,6 +23,8 @@ class MaterialType(str, Enum):
 
 
 class Material(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     name: str
     type: MaterialType
     hardness: float = 0.0          # HRC or Brinell depending on context
@@ -30,9 +32,6 @@ class Material(BaseModel):
     density: float = 1.0           # g/cm³
     melting_point: Optional[float] = None  # °C
     notes: str = ""
-
-    class Config:
-        use_enum_values = True
 
 
 # --------------------------------------------------------------------------- #
@@ -87,14 +86,13 @@ class IssueSeverity(str, Enum):
 
 
 class ValidationIssue(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     severity: IssueSeverity
     code: str
     message: str
     location: Optional[Dict[str, Any]] = None
     suggestion: Optional[str] = None
-
-    class Config:
-        use_enum_values = True
 
 
 class MeshStats(BaseModel):
@@ -147,6 +145,8 @@ class TimeEstimate(BaseModel):
 # --------------------------------------------------------------------------- #
 
 class ManufacturingReport(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     model_id: str = ""
     validation: Optional[ValidationResult] = None
     cnc_params: Optional[CNCParams] = None
@@ -156,6 +156,3 @@ class ManufacturingReport(BaseModel):
     time_estimate: Optional[TimeEstimate] = None
     recommended_type: Optional[ManufacturingType] = None
     notes: str = ""
-
-    class Config:
-        use_enum_values = True

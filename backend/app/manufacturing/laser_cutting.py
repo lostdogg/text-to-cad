@@ -89,7 +89,7 @@ class LaserOptimizer(BaseManufacturingOptimizer):
             )
             if section is None:
                 return self._bbox_profile(mesh)
-            path2d, _ = section.to_planar()
+            path2d = section.to_2D()
             if path2d is None or len(path2d.vertices) == 0:
                 return self._bbox_profile(mesh)
             return path2d.vertices.tolist()

@@ -9,7 +9,7 @@ import logging
 import math
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -73,7 +73,7 @@ class CADExporter:
         """
         filepath = CADExporter._validate_filepath(filepath)
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
         bounds = mesh.bounds if mesh.bounds is not None else np.zeros((2, 3))
         lines = [
             "ISO-10303-21;",
@@ -268,7 +268,7 @@ class CADExporter:
         size = (bounds[1] - bounds[0]).tolist() if mesh.bounds is not None else [0, 0, 0]
         return {
             "report_type": "QC",
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "mesh_stats": {
                 "vertex_count": len(mesh.vertices),
                 "face_count": len(mesh.faces),
@@ -300,7 +300,7 @@ class CADExporter:
         if materials is None:
             materials = ["aluminum_6061"]
         specs: Dict[str, Any] = {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "materials": [],
             "fasteners": [],
             "tooling": [],

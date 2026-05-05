@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Vector3(BaseModel):
@@ -40,13 +40,12 @@ class PrimitiveType(str, Enum):
 class PrimitiveSpec(BaseModel):
     """Specification for a primitive geometry shape."""
 
+    model_config = ConfigDict(use_enum_values=True)
+
     type: PrimitiveType
     dimensions: Dict[str, float] = Field(default_factory=dict)
     transform: Transform = Field(default_factory=Transform)
     name: Optional[str] = None
-
-    class Config:
-        use_enum_values = True
 
 
 class BooleanOpType(str, Enum):
@@ -58,14 +57,13 @@ class BooleanOpType(str, Enum):
 class BooleanOpSpec(BaseModel):
     """Specification for a boolean (CSG) operation between two geometry specs."""
 
+    model_config = ConfigDict(use_enum_values=True)
+
     operation: BooleanOpType
     # Each operand can be a primitive index (int) or another BooleanOpSpec
     operand_a: Any  # int index or nested BooleanOpSpec
     operand_b: Any  # int index or nested BooleanOpSpec
     name: Optional[str] = None
-
-    class Config:
-        use_enum_values = True
 
 
 class GeometrySpec(BaseModel):
@@ -122,16 +120,15 @@ class MeshData(BaseModel):
 class CADModel(BaseModel):
     """A complete CAD model with geometry spec, mesh data, and metadata."""
 
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "Untitled Model"
     description: str = ""
     geometry_spec: Optional[GeometrySpec] = None
     mesh_data: Optional[MeshData] = None
     source_text: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     tags: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
-
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
