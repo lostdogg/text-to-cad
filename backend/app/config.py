@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     # Optional OpenAI key for GPT-4 NLP fallback
     OPENAI_API_KEY: Optional[str] = Field(None, description="OpenAI API key")
 
+    # Optional keys for other AI providers (used as server-side defaults only;
+    # per-request keys supplied by the client always take precedence)
+    ANTHROPIC_API_KEY: Optional[str] = Field(None, description="Anthropic API key")
+    GOOGLE_API_KEY: Optional[str] = Field(None, description="Google AI / Gemini API key")
+    OLLAMA_BASE_URL: str = Field(
+        "http://localhost:11434/v1",
+        description="Base URL for a local Ollama instance",
+    )
+
     # Server
     HOST: str = Field("0.0.0.0", description="Bind host")
     PORT: int = Field(8000, description="Bind port")

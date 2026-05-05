@@ -3,13 +3,15 @@ import SemanticWorkspace from './components/SemanticWorkspace';
 import CADViewer from './components/CADViewer';
 import ManufacturingPanel from './components/ManufacturingPanel';
 import CollaborationPanel from './components/CollaborationPanel';
+import AIProviderPanel from './components/AIProviderPanel';
 import ToastContainer from './components/Toast';
 import useCADStore from './store/cadStore';
 
-type PanelKey = 'workspace' | 'manufacturing' | 'collaboration';
+type PanelKey = 'workspace' | 'ai' | 'manufacturing' | 'collaboration';
 
 const PANEL_LABELS: Record<PanelKey, string> = {
   workspace: '✏️ Workspace',
+  ai: '🤖 AI',
   manufacturing: '⚙️ Manufacturing',
   collaboration: '👥 Collaborate',
 };
@@ -70,6 +72,7 @@ const App: React.FC = () => {
           {/* Active panel */}
           <div className="flex-1 overflow-y-auto">
             {activePanel === 'workspace' && <SemanticWorkspace />}
+            {activePanel === 'ai' && <AIProviderPanel />}
             {activePanel === 'manufacturing' && <ManufacturingPanel />}
             {activePanel === 'collaboration' && <CollaborationPanel />}
           </div>

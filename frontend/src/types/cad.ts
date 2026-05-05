@@ -1,4 +1,33 @@
 // ------------------------------------------------------------------ //
+// AI Provider types                                                   //
+// ------------------------------------------------------------------ //
+
+export enum AIProvider {
+  RULES = 'rules',
+  OPENAI = 'openai',
+  ANTHROPIC = 'anthropic',
+  GOOGLE = 'google',
+  OLLAMA = 'ollama',
+  CUSTOM = 'custom',
+}
+
+export interface AIProviderConfig {
+  provider: AIProvider;
+  api_key?: string;
+  model?: string;
+  base_url?: string;
+}
+
+export interface ProviderInfo {
+  provider: AIProvider;
+  label: string;
+  description: string;
+  requires_key: boolean;
+  requires_base_url: boolean;
+  default_model: string | null;
+}
+
+// ------------------------------------------------------------------ //
 // Core geometry types                                                  //
 // ------------------------------------------------------------------ //
 
@@ -170,6 +199,7 @@ export interface GenerateRequest {
   text: string;
   manufacturing_type?: ManufacturingType;
   options?: Record<string, unknown>;
+  ai_provider?: AIProviderConfig;
 }
 
 export interface GenerateResponse {

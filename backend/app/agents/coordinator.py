@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from ..models.ai_provider import AIProviderConfig
 from ..models.geometry import CADModel, GeometrySpec, MeshData
 from ..models.manufacturing import ManufacturingReport, ManufacturingType, ValidationResult
 from .csg_agent import CSGAgent
@@ -33,6 +34,7 @@ class AgentTask:
     text: str = ""
     manufacturing_type: Optional[str] = None
     options: Dict[str, Any] = field(default_factory=dict)
+    ai_provider: Optional[AIProviderConfig] = None
 
 
 @dataclass
@@ -62,12 +64,14 @@ class AgentCoordinator:
         text: str,
         manufacturing_type: Optional[str] = None,
         options: Optional[Dict[str, Any]] = None,
+        ai_provider: Optional[AIProviderConfig] = None,
     ) -> CoordinatorResult:
         """Run the full agent pipeline for a text-to-CAD request."""
         task = AgentTask(
             text=text,
             manufacturing_type=manufacturing_type,
             options=options or {},
+            ai_provider=ai_provider,
         )
         return await self._run_pipeline(task)
 
@@ -81,7 +85,9 @@ class AgentCoordinator:
         # ---------------------------------------------------------------- #
         try:
             logs.append("NLPAgent: parsing text...")
-            geometry_spec: GeometrySpec = await self.nlp_agent.parse_text(task.text)
+            geometry_spec: GeometrySpec = await self.nlp_agent.parse_text(
+                task.text, provider_config=task.ai_provider
+            )
             logs.append(
                 f"NLPAgent: found {len(geometry_spec.primitives)} primitive(s), "
                 f"{len(geometry_spec.operations)} operation(s)"

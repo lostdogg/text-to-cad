@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import * as api from '../api/client';
 import {
+  AIProvider,
+  AIProviderConfig,
   CADModel,
   CNCParams,
   GenerateResponse,
@@ -51,6 +53,9 @@ interface CADState {
   // Manufacturing
   manufacturing: ManufacturingSettings;
 
+  // AI Provider
+  aiProvider: AIProviderConfig;
+
   // Collaboration
   collaboration: CollaborationState;
 
@@ -84,6 +89,8 @@ interface CADActions {
   updatePrintParams: (params: Partial<PrintParams>) => void;
   updateLaserParams: (params: Partial<LaserParams>) => void;
   setManufacturingTab: (tab: ManufacturingType) => void;
+
+  setAIProvider: (config: AIProviderConfig) => void;
 
   joinSession: (sessionId: string) => void;
   leaveSession: () => void;
@@ -131,6 +138,7 @@ export const useCADStore = create<CADStore>()(
       validation: null,
       manufacturingReport: null,
       manufacturing: defaultManufacturing,
+      aiProvider: { provider: AIProvider.RULES },
       collaboration: defaultCollaboration,
       wireframe: false,
       showGrid: true,
@@ -144,9 +152,11 @@ export const useCADStore = create<CADStore>()(
       generateFromText: async (text, manufacturingType) => {
         set({ isLoading: true, error: null, agentLogs: [] });
         try {
+          const { aiProvider } = get();
           const response = await api.generate({
             text,
             manufacturing_type: manufacturingType,
+            ai_provider: aiProvider.provider !== AIProvider.RULES ? aiProvider : undefined,
           });
           if (!response.success) throw new Error(response.error ?? 'Generation failed');
           const model: CADModel = {
@@ -270,6 +280,8 @@ export const useCADStore = create<CADStore>()(
         set((state) => ({
           manufacturing: { ...state.manufacturing, activeTab: tab },
         })),
+
+      setAIProvider: (config) => set({ aiProvider: config }),
 
       // ---------------------------------------------------------------- //
       // Collaboration                                                     //
