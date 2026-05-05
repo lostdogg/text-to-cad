@@ -13,6 +13,7 @@ import {
   SessionState,
   ValidationResult,
 } from '../types/cad';
+import type { ToastItem, ToastType } from '../components/Toast';
 
 // ------------------------------------------------------------------ //
 // State                                                                //
@@ -57,6 +58,12 @@ interface CADState {
   wireframe: boolean;
   showGrid: boolean;
   measureMode: boolean;
+
+  // Toasts
+  toasts: ToastItem[];
+
+  // Agent pipeline logs
+  agentLogs: string[];
 }
 
 // ------------------------------------------------------------------ //
@@ -86,6 +93,9 @@ interface CADActions {
   toggleWireframe: () => void;
   toggleGrid: () => void;
   toggleMeasureMode: () => void;
+
+  addToast: (type: ToastType, message: string) => void;
+  removeToast: (id: string) => void;
 }
 
 type CADStore = CADState & CADActions;
@@ -125,12 +135,14 @@ export const useCADStore = create<CADStore>()(
       wireframe: false,
       showGrid: true,
       measureMode: false,
+      toasts: [],
+      agentLogs: [],
 
       // ---------------------------------------------------------------- //
       // Generation                                                        //
       // ---------------------------------------------------------------- //
       generateFromText: async (text, manufacturingType) => {
-        set({ isLoading: true, error: null });
+        set({ isLoading: true, error: null, agentLogs: [] });
         try {
           const response = await api.generate({
             text,
@@ -150,10 +162,14 @@ export const useCADStore = create<CADStore>()(
             lastResponse: response,
             validation: response.validation ?? null,
             manufacturingReport: response.manufacturing_report ?? null,
+            agentLogs: response.agent_logs ?? [],
             isLoading: false,
           }));
+          get().addToast('success', `Model generated in ${response.processing_time.toFixed(2)}s`);
         } catch (err) {
-          set({ error: String(err), isLoading: false });
+          const msg = String(err);
+          set({ error: msg, isLoading: false });
+          get().addToast('error', msg.length > 80 ? msg.slice(0, 80) + '…' : msg);
         }
       },
 
@@ -185,8 +201,11 @@ export const useCADStore = create<CADStore>()(
             filename = `model-${modelId}.step`;
           }
           api.downloadBlob(blob, filename);
+          get().addToast('success', `Exported ${format.toUpperCase()} successfully`);
         } catch (err) {
-          set({ error: `Export failed: ${String(err)}` });
+          const msg = `Export failed: ${String(err)}`;
+          set({ error: msg });
+          get().addToast('error', msg);
         }
       },
 
@@ -202,8 +221,11 @@ export const useCADStore = create<CADStore>()(
             blob = await api.exportGCodeLaser(modelId, manufacturing.laserParams as LaserParams);
           }
           api.downloadBlob(blob, `model-${modelId}-${type}.gcode`);
+          get().addToast('success', `G-code exported successfully`);
         } catch (err) {
-          set({ error: `G-code export failed: ${String(err)}` });
+          const msg = `G-code export failed: ${String(err)}`;
+          set({ error: msg });
+          get().addToast('error', msg);
         }
       },
 
@@ -332,6 +354,16 @@ export const useCADStore = create<CADStore>()(
       toggleWireframe: () => set((s) => ({ wireframe: !s.wireframe })),
       toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
       toggleMeasureMode: () => set((s) => ({ measureMode: !s.measureMode })),
+
+      // ---------------------------------------------------------------- //
+      // Toasts                                                            //
+      // ---------------------------------------------------------------- //
+      addToast: (type, message) => {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        set((s) => ({ toasts: [...s.toasts, { id, type, message }] }));
+      },
+      removeToast: (id) =>
+        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
     }),
     { name: 'cad-store' },
   ),

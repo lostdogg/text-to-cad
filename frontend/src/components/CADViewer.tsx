@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, Suspense } from 'react';
+import React, { useRef, useState, useCallback, Suspense, useMemo, useEffect } from 'react';
 import { Canvas, ThreeEvent, useThree } from '@react-three/fiber';
 import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
@@ -113,9 +113,6 @@ function MeasurementLine({ points }: MeasurementOverlayProps) {
   const p0 = points[0];
   const p1 = points[1];
   const verts = new Float32Array([p0.x,p0.y,p0.z, p1.x,p1.y,p1.z]);
-  const dist = Math.sqrt(
-    (p1.x-p0.x)**2 + (p1.y-p0.y)**2 + (p1.z-p0.z)**2
-  );
   const mid = { x:(p0.x+p1.x)/2, y:(p0.y+p1.y)/2, z:(p0.z+p1.z)/2 };
   return (
     <group>
@@ -129,7 +126,6 @@ function MeasurementLine({ points }: MeasurementOverlayProps) {
         <sphereGeometry args={[0.5]} />
         <meshBasicMaterial color="#FFFF00" />
       </mesh>
-      {/* Distance label via sprite would go here in production */}
       <group position={[p0.x, p0.y, p0.z]}>
         <mesh><sphereGeometry args={[1]}/><meshBasicMaterial color="#FF8C00"/></mesh>
       </group>
@@ -141,8 +137,45 @@ function MeasurementLine({ points }: MeasurementOverlayProps) {
 }
 
 // ------------------------------------------------------------------ //
+// Camera controller — handles fit-to-view inside canvas              //
+// ------------------------------------------------------------------ //
+
+interface CameraControllerProps {
+  fitTrigger: number;
+  modelBounds: ModelBounds | null;
+  orbitRef: React.MutableRefObject<any>;
+}
+
+function CameraController({ fitTrigger, modelBounds, orbitRef }: CameraControllerProps) {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    if (!fitTrigger || !modelBounds) return;
+    const { center, size } = modelBounds;
+    const maxDim = Math.max(...size);
+    const dist = maxDim * 1.8;
+    camera.position.set(center[0] + dist, center[1] - dist, center[2] + dist);
+    camera.lookAt(center[0], center[1], center[2]);
+    if (orbitRef.current) {
+      orbitRef.current.target.set(center[0], center[1], center[2]);
+      orbitRef.current.update();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitTrigger]);
+
+  return null;
+}
+
+// ------------------------------------------------------------------ //
 // Scene component (needs useThree)                                    //
 // ------------------------------------------------------------------ //
+
+interface ModelBounds {
+  min: number[];
+  max: number[];
+  center: number[];
+  size: number[];
+}
 
 interface SceneProps {
   meshData: MeshData | undefined;
@@ -152,14 +185,16 @@ interface SceneProps {
   onContextMenu: (e: ThreeEvent<MouseEvent>, worldPos: THREE.Vector3) => void;
   measurePoints: MeasurePoint[];
   onMeasureClick: (pos: MeasurePoint) => void;
+  fitTrigger: number;
+  modelBounds: ModelBounds | null;
+  orbitRef: React.MutableRefObject<any>;
 }
 
 function Scene({
   meshData, wireframe, measureMode, showGrid,
-  onContextMenu, measurePoints, onMeasureClick
+  onContextMenu, measurePoints, onMeasureClick,
+  fitTrigger, modelBounds, orbitRef,
 }: SceneProps) {
-  const { camera } = useThree();
-
   const handleCanvasClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     if (!measureMode) return;
     onMeasureClick({ x: e.point.x, y: e.point.y, z: e.point.z });
@@ -200,7 +235,6 @@ function Scene({
 
       {measureMode && <MeasurementLine points={measurePoints} />}
 
-      {/* Invisible ground plane for measure click detection */}
       {measureMode && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} onClick={handleCanvasClick} visible={false}>
           <planeGeometry args={[1000, 1000]} />
@@ -208,10 +242,12 @@ function Scene({
         </mesh>
       )}
 
-      <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
+      <OrbitControls ref={orbitRef} makeDefault enableDamping dampingFactor={0.05} />
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
         <GizmoViewport axisColors={['#FF4444', '#44FF44', '#4444FF']} labelColor="white" />
       </GizmoHelper>
+
+      <CameraController fitTrigger={fitTrigger} modelBounds={modelBounds} orbitRef={orbitRef} />
     </>
   );
 }
@@ -228,13 +264,37 @@ interface ContextMenuState {
 }
 
 export const CADViewer: React.FC = () => {
-  const { currentModel, wireframe, showGrid, measureMode, toggleWireframe, toggleGrid, toggleMeasureMode } = useCADStore();
+  const { currentModel, wireframe, showGrid, measureMode, toggleWireframe, toggleGrid, toggleMeasureMode, exportModel } = useCADStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     visible: false, x: 0, y: 0, worldPos: new THREE.Vector3()
   });
   const [measurePoints, setMeasurePoints] = useState<MeasurePoint[]>([]);
   const [measureDist, setMeasureDist] = useState<number | null>(null);
+  const [fitTrigger, setFitTrigger] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const orbitRef = useRef<any>(null);
+
+  // Compute bounding box from mesh vertices
+  const modelBounds = useMemo<ModelBounds | null>(() => {
+    const verts = currentModel?.mesh_data?.vertices;
+    if (!verts?.length) return null;
+    const mn = [Infinity, Infinity, Infinity];
+    const mx = [-Infinity, -Infinity, -Infinity];
+    for (const v of verts) {
+      for (let i = 0; i < 3; i++) {
+        if (v[i] < mn[i]) mn[i] = v[i];
+        if (v[i] > mx[i]) mx[i] = v[i];
+      }
+    }
+    const center = mn.map((v, i) => (v + mx[i]) / 2);
+    const size = mn.map((v, i) => mx[i] - v);
+    return { min: mn, max: mx, center, size };
+  }, [currentModel?.mesh_data]);
+
+  // Auto fit when a new model loads
+  useEffect(() => {
+    if (modelBounds) setFitTrigger((n) => n + 1);
+  }, [modelBounds]);
 
   const handleContextMenu = useCallback((e: ThreeEvent<MouseEvent>, worldPos: THREE.Vector3) => {
     const nativeEvent = e.nativeEvent as MouseEvent;
@@ -263,31 +323,55 @@ export const CADViewer: React.FC = () => {
       onClick={closeContextMenu}>
 
       {/* Toolbar */}
-      <div className="absolute top-2 left-2 z-10 flex gap-2">
+      <div className="absolute top-2 left-2 z-10 flex gap-1.5 flex-wrap">
         <button onClick={toggleWireframe}
-          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${wireframe ? 'bg-sky-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'}`}>
+          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${wireframe ? 'bg-sky-600 text-white' : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'}`}>
           Wireframe
         </button>
         <button onClick={toggleGrid}
-          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${showGrid ? 'bg-sky-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'}`}>
+          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${showGrid ? 'bg-sky-600 text-white' : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'}`}>
           Grid
         </button>
         <button onClick={() => { toggleMeasureMode(); setMeasurePoints([]); setMeasureDist(null); }}
-          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${measureMode ? 'bg-amber-600 text-white' : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'}`}>
+          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${measureMode ? 'bg-amber-600 text-white' : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 border border-zinc-700'}`}>
           Measure
+        </button>
+        <button
+          onClick={() => setFitTrigger((n) => n + 1)}
+          disabled={!modelBounds}
+          title="Fit model to view"
+          className="px-2 py-1 rounded text-xs font-medium transition-colors bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Fit View
         </button>
       </div>
 
+      {/* Quick export buttons */}
+      {currentModel && (
+        <div className="absolute top-2 right-2 z-10 flex gap-1.5">
+          {(['stl', 'obj', 'step'] as const).map((fmt) => (
+            <button
+              key={fmt}
+              onClick={() => exportModel(fmt, currentModel.id)}
+              title={`Export ${fmt.toUpperCase()}`}
+              className="px-2 py-1 rounded text-xs font-medium bg-zinc-800/80 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
+            >
+              ↓ {fmt.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Measure distance display */}
       {measureDist !== null && (
-        <div className="absolute top-2 right-2 z-10 bg-amber-900/80 border border-amber-600 rounded px-3 py-1 text-sm text-amber-300">
+        <div className="absolute top-10 right-2 z-10 bg-amber-900/80 border border-amber-600 rounded px-3 py-1 text-sm text-amber-300">
           Distance: <strong>{measureDist} mm</strong>
         </div>
       )}
 
       {/* Measure instructions */}
       {measureMode && !measureDist && (
-        <div className="absolute top-2 right-2 z-10 bg-zinc-800/80 border border-zinc-600 rounded px-3 py-1 text-xs text-zinc-400">
+        <div className="absolute top-10 right-2 z-10 bg-zinc-800/80 border border-zinc-600 rounded px-3 py-1 text-xs text-zinc-400">
           {measurePoints.length === 0 ? 'Click first point' : 'Click second point'}
         </div>
       )}
@@ -301,7 +385,7 @@ export const CADViewer: React.FC = () => {
                 d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
             </svg>
             <p className="text-lg">No model loaded</p>
-            <p className="text-sm mt-1">Generate a model to view it here</p>
+            <p className="text-sm mt-1">Describe a part and click Generate</p>
           </div>
         </div>
       )}
@@ -320,9 +404,28 @@ export const CADViewer: React.FC = () => {
             onContextMenu={handleContextMenu}
             measurePoints={measurePoints}
             onMeasureClick={handleMeasureClick}
+            fitTrigger={fitTrigger}
+            modelBounds={modelBounds}
+            orbitRef={orbitRef}
           />
         </Suspense>
       </Canvas>
+
+      {/* Model info overlay */}
+      {currentModel?.mesh_data && (
+        <div className="absolute bottom-8 left-2 z-10 bg-zinc-900/80 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-400 backdrop-blur-sm max-w-[220px]">
+          <p className="text-zinc-200 font-medium truncate">{currentModel.name}</p>
+          <p className="mt-0.5">
+            {currentModel.mesh_data.vertex_count.toLocaleString()} verts &middot;{' '}
+            {currentModel.mesh_data.face_count.toLocaleString()} faces
+          </p>
+          {modelBounds && (
+            <p className="mt-0.5 font-mono text-zinc-500">
+              {modelBounds.size[0].toFixed(1)} &times; {modelBounds.size[1].toFixed(1)} &times; {modelBounds.size[2].toFixed(1)} mm
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu.visible && (
@@ -345,15 +448,18 @@ interface ContextMenuOverlayProps {
 }
 
 function ContextMenuOverlay({ x, y, onClose, modelId }: ContextMenuOverlayProps) {
-  const { exportModel } = useCADStore();
+  const { exportModel, exportGCode } = useCADStore();
   const items = [
-    { label: 'Export STL', action: () => modelId && exportModel('stl', modelId) },
-    { label: 'Export OBJ', action: () => modelId && exportModel('obj', modelId) },
-    { label: 'Export STEP', action: () => modelId && exportModel('step', modelId) },
+    { label: '↓ Export STL', action: () => modelId && exportModel('stl', modelId) },
+    { label: '↓ Export OBJ', action: () => modelId && exportModel('obj', modelId) },
+    { label: '↓ Export STEP', action: () => modelId && exportModel('step', modelId) },
+    { label: '⚙ CNC G-code', action: () => modelId && exportGCode('cnc', modelId) },
+    { label: '🖨 3D Print G-code', action: () => modelId && exportGCode('3dprint', modelId) },
+    { label: '🔴 Laser G-code', action: () => modelId && exportGCode('laser', modelId) },
   ];
   return (
     <div
-      className="fixed z-50 bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+      className="fixed z-50 bg-zinc-800 border border-zinc-600 rounded-lg shadow-xl py-1 min-w-[180px]"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -377,3 +483,4 @@ function ContextMenuOverlay({ x, y, onClose, modelId }: ContextMenuOverlayProps)
 }
 
 export default CADViewer;
+
