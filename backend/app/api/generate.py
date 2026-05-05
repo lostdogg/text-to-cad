@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from ..agents.coordinator import AgentCoordinator
 from ..config import settings
+from ..models.ai_provider import AIProviderConfig, PROVIDER_INFO
 from ..models.geometry import CADModel, MeshData
 from ..models.manufacturing import ManufacturingReport, ValidationResult
 
@@ -38,6 +39,7 @@ class GenerateRequest(BaseModel):
     text: str
     manufacturing_type: Optional[str] = None
     options: Dict[str, Any] = {}
+    ai_provider: Optional[AIProviderConfig] = None
 
 
 class GenerateResponse(BaseModel):
@@ -67,6 +69,7 @@ async def generate_model(request: GenerateRequest) -> GenerateResponse:
         text=request.text,
         manufacturing_type=request.manufacturing_type,
         options=request.options,
+        ai_provider=request.ai_provider,
     )
 
     if result.success and result.model:
@@ -114,3 +117,9 @@ async def get_model(model_id: str) -> CADModel:
 
 def get_model_store() -> Dict[str, CADModel]:
     return _models
+
+
+@router.get("/providers", tags=["generate"])
+async def list_providers() -> Dict[str, Any]:
+    """List all supported AI providers and their metadata."""
+    return {"providers": PROVIDER_INFO}
