@@ -43,10 +43,15 @@ AI-powered text-to-3D-CAD generation with multi-agent architecture, manufacturin
 ### Option A — Docker (recommended)
 
 ```bash
-# 1. Copy and edit environment variables (optional — required only for AI keys)
+# 1. Copy the example environment file
 cp .env.example .env
 
-# 2. Build and start all services
+# 2. Open .env in your editor and fill in any API keys you want to use
+#    (see "Environment Variables" section below for details)
+nano .env          # Linux / macOS
+notepad .env       # Windows
+
+# 3. Build and start all services
 docker-compose up --build
 ```
 
@@ -58,8 +63,13 @@ docker-compose up --build
 
 **1. Set up environment variables**
 ```bash
+# Linux / macOS
 cp .env.example .env
-# edit .env to set any optional API keys
+nano .env          # or: vim .env  /  code .env
+
+# Windows (PowerShell)
+Copy-Item .env.example .env
+notepad .env
 ```
 
 **2. Backend**
@@ -79,25 +89,56 @@ npm run dev
 - Frontend:    http://localhost:5173
 - API Docs:    http://localhost:8000/docs
 
+### Environment Variables
+
+`.env.example` ships with sensible defaults. Copy it to `.env` and uncomment / fill in the values you need:
+
+```bash
+# Linux / macOS
+cp .env.example .env
+nano .env
+
+# Windows (PowerShell)
+Copy-Item .env.example .env
+notepad .env
+```
+
+| Variable | Default | Description |
+|---|---|---|
+| `MODE` | `local` | Set to `cloud` when deploying to a server |
+| `HOST` | `0.0.0.0` | Interface the backend binds to |
+| `PORT` | `8000` | Backend port |
+| `OPENAI_API_KEY` | _(empty)_ | Optional — enables GPT-4 / GPT-4o |
+| `ANTHROPIC_API_KEY` | _(empty)_ | Optional — enables Claude models |
+| `GOOGLE_API_KEY` | _(empty)_ | Optional — enables Gemini models |
+| `OLLAMA_BASE_URL` | _(empty)_ | Optional — enables local Ollama models |
+| `CORS_ORIGINS` | `["http://localhost:3000","http://localhost:5173"]` | Comma-separated or JSON list of allowed origins |
+| `MAX_WORKERS` | `4` | Async worker threads for the backend |
+| `EXPORT_DIR` | `exports` | Directory where generated files are saved |
+
 ### Optional — AI NLP Providers
 
-The system works out of the box with the built-in rule-based NLP parser. To enable a cloud AI model, add the relevant key to `.env`:
+The system works out of the box with the built-in rule-based NLP parser. To enable a cloud AI model, uncomment and set the relevant key in `.env`:
 
 ```bash
 # OpenAI (GPT-4, GPT-4o, …)
+# Get your key → https://platform.openai.com/api-keys
 OPENAI_API_KEY=sk-...
 
 # Anthropic (Claude)
+# Get your key → https://console.anthropic.com/settings/keys
 ANTHROPIC_API_KEY=sk-ant-...
 
 # Google AI / Gemini
+# Get your key → https://aistudio.google.com/app/apikey
 GOOGLE_API_KEY=AIza...
 
-# Ollama (local models — change URL if Ollama runs on another host)
+# Ollama (local models — no key needed; install from https://ollama.com)
+# Change the URL only if Ollama runs on a different host / port
 OLLAMA_BASE_URL=http://localhost:11434/v1
 ```
 
-You can also supply your API key directly from the UI without restarting the server.
+> **Tip:** You can also paste your API key directly in the UI at runtime without editing `.env` or restarting the server.
 
 ## API Reference
 
@@ -166,9 +207,16 @@ frontend/
 Copy `.env.example` to `.env` and fill in your values before any build or push step:
 
 ```bash
+# Linux / macOS
 cp .env.example .env
-# edit .env — set OPENAI_API_KEY, MODE=cloud, etc.
+nano .env          # set OPENAI_API_KEY, MODE=cloud, etc.
+
+# Windows (PowerShell)
+Copy-Item .env.example .env
+notepad .env
 ```
+
+See the [Environment Variables](#environment-variables) table above for a description of every setting.
 
 ### 2. Build and tag the Docker image
 
