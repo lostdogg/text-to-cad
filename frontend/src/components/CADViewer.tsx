@@ -209,8 +209,8 @@ function Scene({
 
   return (
     <>
-      {/* SW dark-mode viewport background */}
-      <color attach="background" args={['#0F1820']} />
+      {/* SW dark-mode viewport background — matches zinc-950 (#0D1117) */}
+      <color attach="background" args={['#0D1117']} />
 
       <ambientLight intensity={0.5} />
       <directionalLight position={[50, 50, 80]} intensity={1} castShadow />

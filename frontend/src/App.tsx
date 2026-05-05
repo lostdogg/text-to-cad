@@ -9,11 +9,11 @@ import useCADStore from './store/cadStore';
 
 type PanelKey = 'workspace' | 'ai' | 'manufacturing' | 'collaboration';
 
-const PANEL_LABELS: Record<PanelKey, { short: string; icon: string }> = {
-  workspace:     { short: 'Feature Mgr',  icon: '◧' },
-  ai:            { short: 'AI Config',    icon: '⬡' },
-  manufacturing: { short: 'CAM / Mfg',   icon: '⚙' },
-  collaboration: { short: 'Teams',        icon: '⬡' },
+const PANEL_LABELS: Record<PanelKey, string> = {
+  workspace:     'Feature Mgr',
+  ai:            'AI Config',
+  manufacturing: 'CAM / Mfg',
+  collaboration: 'Teams',
 };
 
 const MENU_ITEMS = ['File', 'Edit', 'View', 'Insert', 'Tools', 'Window', 'Help'];
@@ -85,20 +85,19 @@ const App: React.FC = () => {
           {/* PropertyManager tab strip */}
           <div className="flex border-b border-zinc-600 bg-zinc-950 select-none">
             {(Object.keys(PANEL_LABELS) as PanelKey[]).map((key) => {
-              const { short } = PANEL_LABELS[key];
               const isActive = activePanel === key;
               return (
                 <button
                   key={key}
                   onClick={() => setActivePanel(key)}
-                  title={short}
+                  title={PANEL_LABELS[key]}
                   className={`flex-1 py-1.5 px-1 text-[10px] font-semibold tracking-wide transition-colors border-b-2 ${
                     isActive
                       ? 'border-b-sky-500 bg-zinc-800 text-sky-400'
                       : 'border-b-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60'
                   }`}
                 >
-                  {short}
+                  {PANEL_LABELS[key]}
                 </button>
               );
             })}
