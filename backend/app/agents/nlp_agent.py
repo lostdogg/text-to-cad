@@ -489,4 +489,3 @@ class NLPAgent:
             "NLPAgent: OpenAI-compatible (%s @ %s) parse complete", model, base_url
         )
         return _build_geometry_spec_from_dict(json.loads(raw), text)
-
