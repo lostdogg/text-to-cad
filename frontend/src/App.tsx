@@ -3,17 +3,20 @@ import SemanticWorkspace from './components/SemanticWorkspace';
 import CADViewer from './components/CADViewer';
 import ManufacturingPanel from './components/ManufacturingPanel';
 import CollaborationPanel from './components/CollaborationPanel';
+import ToastContainer from './components/Toast';
+import useCADStore from './store/cadStore';
 
 type PanelKey = 'workspace' | 'manufacturing' | 'collaboration';
 
 const PANEL_LABELS: Record<PanelKey, string> = {
   workspace: '✏️ Workspace',
   manufacturing: '⚙️ Manufacturing',
-  collaboration: '👥 Collaboration',
+  collaboration: '👥 Collaborate',
 };
 
 const App: React.FC = () => {
   const [activePanel, setActivePanel] = useState<PanelKey>('workspace');
+  const { toasts, removeToast, currentModel, models } = useCADStore();
 
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-gray-100 overflow-hidden">
@@ -27,9 +30,19 @@ const App: React.FC = () => {
           <span className="font-bold text-xl text-white tracking-tight">Text-to-CAD</span>
           <span className="text-xs text-zinc-500 hidden sm:inline">AI-powered 3D CAD generation</span>
         </div>
-        <div className="flex items-center gap-1 text-xs text-zinc-500">
-          <span className="w-2 h-2 bg-green-500 rounded-full inline-block" />
-          API Ready
+        <div className="flex items-center gap-4 text-xs text-zinc-500">
+          {currentModel && (
+            <span className="text-zinc-400 hidden md:inline">
+              Model: <span className="text-sky-400">{currentModel.name}</span>
+            </span>
+          )}
+          {models.length > 0 && (
+            <span className="text-zinc-600 hidden md:inline">{models.length} model{models.length !== 1 ? 's' : ''}</span>
+          )}
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 bg-green-500 rounded-full inline-block animate-pulse" />
+            API Ready
+          </span>
         </div>
       </header>
 
@@ -70,11 +83,19 @@ const App: React.FC = () => {
 
       {/* Footer */}
       <footer className="px-4 py-1.5 bg-zinc-900 border-t border-zinc-800 shrink-0 flex items-center justify-between text-xs text-zinc-600">
-        <span>Coordinate system: X+ Right · Y+ Back · Z+ Up (mm)</span>
+        <span>
+          <span className="text-red-400 font-bold">X+</span> Right ·{' '}
+          <span className="text-green-400 font-bold">Y+</span> Back ·{' '}
+          <span className="text-blue-400 font-bold">Z+</span> Up · all dims in mm
+        </span>
         <span>Text-to-CAD v1.0.0 · FastAPI + React Three Fiber</span>
       </footer>
+
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 };
 
 export default App;
+
