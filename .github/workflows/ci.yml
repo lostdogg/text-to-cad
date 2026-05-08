@@ -5,6 +5,9 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   metadata-and-static-checks:
     runs-on: ubuntu-latest

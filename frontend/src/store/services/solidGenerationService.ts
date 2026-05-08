@@ -24,7 +24,7 @@ export async function generateSolidModel(
     name: response.name,
     mesh_data: response.mesh_data,
     source_text: text,
-    created_at: new Date().toISOString(),
+    created_at: response.created_at ?? new Date().toISOString(),
   };
   return { response, model };
 }

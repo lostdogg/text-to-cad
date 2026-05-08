@@ -35,10 +35,10 @@ class ValidationService:
         self._validation_agent = validation_agent
 
     async def validate_mesh(
-        self, mesh_data: MeshData, manufacturing_type: Optional[str]
+        self, mesh_data: MeshData, manufacturing_type_name: Optional[str]
     ) -> ValidationResult:
         mesh = mesh_data.to_trimesh()
-        return await self._validation_agent.validate_mesh(mesh, manufacturing_type)
+        return await self._validation_agent.validate_mesh(mesh, manufacturing_type_name)
 
 
 class ManufacturingService:

@@ -4,7 +4,7 @@ AI-powered text-to-3D-CAD generation with multi-agent architecture, manufacturin
 
 ## Features
 
-Feature availability is formalized via code-level flags and generated into `/home/runner/work/text-to-cad/text-to-cad/CAPABILITIES.md`.
+Feature availability is formalized via code-level flags and generated into `./CAPABILITIES.md`.
 
 See: [Capability Matrix](./CAPABILITIES.md)
 
@@ -244,7 +244,7 @@ The capability matrix is generated from code-level feature flags:
 python scripts/generate_capability_matrix.py
 ```
 
-Generated output: `/home/runner/work/text-to-cad/text-to-cad/CAPABILITIES.md`
+Generated output: `./CAPABILITIES.md`
 
 ## Architecture
 
@@ -411,4 +411,4 @@ Restart the server after editing `.env`:
 
 ## License
 
-MIT (see `/home/runner/work/text-to-cad/text-to-cad/LICENSE`)
+MIT (see `./LICENSE`)

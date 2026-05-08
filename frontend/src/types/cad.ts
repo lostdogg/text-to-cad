@@ -205,6 +205,7 @@ export interface GenerateRequest {
 export interface GenerateResponse {
   model_id: string;
   name: string;
+  created_at?: string;
   mesh_data?: MeshData;
   validation?: ValidationResult;
   manufacturing_report?: ManufacturingReport;
