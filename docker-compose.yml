@@ -1,10 +1,27 @@
 version: '3.9'
 
 services:
+  backend-configure:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: configure
+    environment:
+      - MODE=${MODE:-local}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434/v1}
+      - EXPORT_DIR=/app/exports
+    profiles: ["configure"]
+
   backend:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     container_name: text-to-cad-backend
     ports:
       - "8000:8000"

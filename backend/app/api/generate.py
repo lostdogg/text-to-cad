@@ -45,6 +45,7 @@ class GenerateRequest(BaseModel):
 class GenerateResponse(BaseModel):
     model_id: str
     name: str
+    created_at: Optional[str] = None
     mesh_data: Optional[MeshData] = None
     validation: Optional[ValidationResult] = None
     manufacturing_report: Optional[ManufacturingReport] = None
@@ -80,6 +81,7 @@ async def generate_model(request: GenerateRequest) -> GenerateResponse:
     return GenerateResponse(
         model_id=result.task_id,
         name=result.model.name if result.model else "",
+        created_at=result.model.created_at.isoformat() if result.model else None,
         mesh_data=result.model.mesh_data if result.model else None,
         validation=result.validation,
         manufacturing_report=result.manufacturing_report,

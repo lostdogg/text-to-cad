@@ -13,7 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.collaborate import router as collaborate_router
 from .api.export import router as export_router
 from .api.generate import router as generate_router
+from .api.system import router as system_router
 from .config import settings
+from .metadata import APP_VERSION
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,7 +41,7 @@ def create_app() -> FastAPI:
             "AI-powered text-to-CAD system with multi-agent architecture, "
             "CSG operations, manufacturing optimization, and real-time collaboration."
         ),
-        version="1.0.0",
+        version=APP_VERSION,
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
@@ -62,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(generate_router, prefix="/api")
     app.include_router(collaborate_router, prefix="/api")
     app.include_router(export_router, prefix="/api")
+    app.include_router(system_router, prefix="/api")
 
     # ------------------------------------------------------------------ #
     # Health & root                                                        #
@@ -76,7 +79,7 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "mode": settings.MODE,
-            "version": "1.0.0",
+            "version": APP_VERSION,
             "openai_enabled": bool(settings.OPENAI_API_KEY),
         }
 

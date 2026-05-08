@@ -15,6 +15,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./backend/
+COPY version.json ./version.json
+COPY LICENSE ./LICENSE
 
 # Create exports directory
 RUN mkdir -p exports
@@ -26,4 +28,8 @@ ENV EXPORT_DIR=/app/exports
 
 EXPOSE 8000
 
+FROM backend-base AS configure
+CMD ["python", "-m", "backend.app.configure_only"]
+
+FROM backend-base AS runtime
 CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

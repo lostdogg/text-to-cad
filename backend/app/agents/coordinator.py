@@ -12,9 +12,10 @@ from typing import Any, Dict, List, Optional
 
 from ..models.ai_provider import AIProviderConfig
 from ..models.geometry import CADModel, GeometrySpec, MeshData
-from ..models.manufacturing import ManufacturingReport, ManufacturingType, ValidationResult
+from ..models.manufacturing import ManufacturingReport, ValidationResult
 from .csg_agent import CSGAgent, ComplexityError
 from .nlp_agent import NLPAgent
+from .services import ManufacturingService, SolidGenerationService, ValidationService
 from .validation_agent import ValidationAgent
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,9 @@ class AgentCoordinator:
         self.nlp_agent = NLPAgent(openai_api_key=openai_api_key)
         self.csg_agent = CSGAgent()
         self.validation_agent = ValidationAgent()
+        self.solid_service = SolidGenerationService(self.nlp_agent, self.csg_agent)
+        self.validation_service = ValidationService(self.validation_agent)
+        self.manufacturing_service = ManufacturingService()
         self._task_queue: asyncio.Queue = asyncio.Queue()
         self._results: Dict[str, CoordinatorResult] = {}
 
@@ -115,7 +119,7 @@ class AgentCoordinator:
         t0 = time.monotonic()
         try:
             logs.append("NLPAgent: parsing text...")
-            geometry_spec: GeometrySpec = await self.nlp_agent.parse_text(
+            geometry_spec: GeometrySpec = await self.solid_service.parse_text(
                 task.text, provider_config=task.ai_provider
             )
             dur = (time.monotonic() - t0) * 1000
@@ -155,7 +159,7 @@ class AgentCoordinator:
         t0 = time.monotonic()
         try:
             logs.append("CSGAgent: building mesh...")
-            mesh_data: MeshData = await self.csg_agent.build_from_spec(geometry_spec)
+            mesh_data: MeshData = await self.solid_service.build_mesh(geometry_spec)
             dur = (time.monotonic() - t0) * 1000
             logs.append(
                 f"CSGAgent: mesh built — "
@@ -201,9 +205,8 @@ class AgentCoordinator:
         validation: Optional[ValidationResult] = None
         try:
             logs.append("ValidationAgent: validating mesh...")
-            trimesh_mesh = mesh_data.to_trimesh()
-            validation = await self.validation_agent.validate_mesh(
-                trimesh_mesh, task.manufacturing_type
+            validation = await self.validation_service.validate_mesh(
+                mesh_data, task.manufacturing_type
             )
             dur = (time.monotonic() - t0) * 1000
             logs.append(
@@ -274,45 +277,17 @@ class AgentCoordinator:
         logs: List[str],
     ) -> ManufacturingReport:
         """Build a manufacturing report asynchronously."""
-        from ..manufacturing.cnc import CNCOptimizer
-        from ..manufacturing.printing_3d import PrintingOptimizer
-        from ..manufacturing.laser_cutting import LaserOptimizer
-        from ..models.manufacturing import CNCParams, PrintParams, LaserParams
-
-        mesh = mesh_data.to_trimesh()
-        report = ManufacturingReport(model_id=model_id, validation=validation)
-
         try:
-            mfg = ManufacturingType(manufacturing_type)
-            if mfg == ManufacturingType.CNC_3AXIS:
-                opt = CNCOptimizer()
-                params = CNCParams()
-                report.cnc_params = params
-                report.cost_estimate = opt.estimate_cost(mesh, params)
-                report.time_estimate = opt.estimate_time(mesh, params)
-                report.recommended_type = mfg
-                logs.append("ManufacturingReport: CNC estimates complete")
-            elif mfg == ManufacturingType.PRINTING_3D:
-                opt = PrintingOptimizer()
-                params = PrintParams()
-                report.print_params = params
-                report.cost_estimate = opt.estimate_cost(mesh, params)
-                report.time_estimate = opt.estimate_time(mesh, params)
-                report.recommended_type = mfg
-                logs.append("ManufacturingReport: 3D print estimates complete")
-            elif mfg == ManufacturingType.LASER_CUTTING:
-                opt = LaserOptimizer()
-                params = LaserParams()
-                report.laser_params = params
-                report.cost_estimate = opt.estimate_cost(mesh, params)
-                report.time_estimate = opt.estimate_time(mesh, params)
-                report.recommended_type = mfg
-                logs.append("ManufacturingReport: laser cutting estimates complete")
+            return await self.manufacturing_service.create_report(
+                mesh_data=mesh_data,
+                manufacturing_type=manufacturing_type,
+                validation=validation,
+                model_id=model_id,
+                logs=logs,
+            )
         except Exception as exc:
             logger.warning("Manufacturing report generation failed: %s", exc)
-            logs.append(f"ManufacturingReport: failed ({exc})")
-
-        return report
+            return ManufacturingReport(model_id=model_id, validation=validation)
 
     @staticmethod
     def _infer_name(text: str) -> str:
