@@ -1,0 +1,45 @@
+name: Release Gate
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Validate metadata and legal checks
+        run: python scripts/check_metadata.py
+      - name: Validate tag/version consistency
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          META_VERSION="$(python - <<'PY'
+import json
+print(json.load(open('version.json', encoding='utf-8'))['version'])
+PY
+)"
+          if [ "$TAG" != "$META_VERSION" ]; then
+            echo "Tag v$TAG does not match version.json $META_VERSION"
+            exit 1
+          fi
+      - name: Backend release gate tests
+        run: |
+          pip install -r requirements.txt
+          python -m pytest backend/tests/ -q
+      - name: Frontend release gate quality
+        run: |
+          cd frontend
+          npm ci
+          npm run lint
+          npm run build

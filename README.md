@@ -4,20 +4,9 @@ AI-powered text-to-3D-CAD generation with multi-agent architecture, manufacturin
 
 ## Features
 
-- **Natural Language → 3D CAD**: Describe any part in plain English; rule-based NLP (+ optional GPT-4) converts it to geometry
-- **CSG Boolean Operations**: Union, intersection, subtraction across primitives (box, cylinder, sphere, cone, torus)
-- **Manifold Resolution**: Automatic mesh repair (holes, normals, degenerate faces)
-- **Multi-Agent Architecture**: NLPAgent → CSGAgent → ValidationAgent in parallel via asyncio
-- **Distributed Manufacturing Optimization**:
-  - 3-axis CNC: toolpath generation, fixturing, accessibility checks
-  - 3D Printing (FDM/SLA/SLS): orientation, supports, layer analysis
-  - Laser Cutting: profile extraction, nesting, kerf compensation
-- **Real-time Collaboration**: WebSocket sessions with spatial cursors and chat
-- **Manufacturing-Ready Validation**: Wall thickness, overhang angles, aspect ratios per process
-- **Measurement Tools**: Click-to-measure in 3D viewport (caliper-compatible output in mm)
-- **Export**: STL, OBJ, STEP, CNC G-code, 3D print G-code, Laser G-code
-- **QC Reports & Procurement**: JSON reports, McMaster-Carr / DigiKey part numbers
-- **Cloud & Local**: Docker for cloud, or run directly on Windows/Linux
+Feature availability is formalized via code-level flags and generated into `/home/runner/work/text-to-cad/text-to-cad/CAPABILITIES.md`.
+
+See: [Capability Matrix](./CAPABILITIES.md)
 
 ## Coordinate System
 
@@ -104,6 +93,16 @@ Once you see `Application startup complete` in the terminal output:
 - 📖 API Docs: http://localhost:8000/docs
 
 To stop the app, press `Ctrl + C` in the terminal.
+
+**Configure-only mode (exit semantics)**
+
+Validate container configuration without starting the server:
+
+```bash
+# Exit 0: configuration valid
+# Exit non-zero: configuration invalid/missing required values
+docker compose --profile configure run --rm backend-configure
+```
 
 ### Option B — Local (no Docker)
 
@@ -217,6 +216,7 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
 | POST | `/api/export/gcode/laser/{model_id}` | Laser G-code |
 | GET  | `/api/export/report/{model_id}` | QC report |
 | GET  | `/api/export/procurement/{model_id}` | Procurement specs |
+| GET  | `/api/system/capabilities` | Generated capability matrix + metadata |
 | GET  | `/api/health` | Health check |
 
 ## Example Prompts
@@ -233,8 +233,18 @@ Design a 100mm × 50mm × 3mm acrylic panel for laser cutting
 ```bash
 cd /path/to/repo
 pip install -r requirements.txt
-pytest backend/tests/ -v
+python -m pytest backend/tests/ -q
 ```
+
+## Capability Matrix
+
+The capability matrix is generated from code-level feature flags:
+
+```bash
+python scripts/generate_capability_matrix.py
+```
+
+Generated output: `/home/runner/work/text-to-cad/text-to-cad/CAPABILITIES.md`
 
 ## Architecture
 
@@ -401,4 +411,4 @@ Restart the server after editing `.env`:
 
 ## License
 
-MIT
+MIT (see `/home/runner/work/text-to-cad/text-to-cad/LICENSE`)

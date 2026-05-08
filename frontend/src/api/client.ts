@@ -5,7 +5,6 @@ import {
   GenerateRequest,
   GenerateResponse,
   LaserParams,
-  ManufacturingType,
   PrintParams,
 } from '../types/cad';
 

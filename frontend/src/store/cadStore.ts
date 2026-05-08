@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import * as api from '../api/client';
+import { exportCamGCode, exportSolid } from './services/camService';
+import { createCollaborationWorkflow } from './services/setupWorkflowService';
+import { generateSolidModel } from './services/solidGenerationService';
+import { toggleGrid, toggleMeasureMode, toggleWireframe } from './services/wireframeController';
 import {
   AIProvider,
   AIProviderConfig,
@@ -12,7 +16,6 @@ import {
   ManufacturingType,
   Participant,
   PrintParams,
-  SessionState,
   ValidationResult,
 } from '../types/cad';
 import type { ToastItem, ToastType } from '../components/Toast';
@@ -153,19 +156,7 @@ export const useCADStore = create<CADStore>()(
         set({ isLoading: true, error: null, agentLogs: [] });
         try {
           const { aiProvider } = get();
-          const response = await api.generate({
-            text,
-            manufacturing_type: manufacturingType,
-            ai_provider: aiProvider.provider !== AIProvider.RULES ? aiProvider : undefined,
-          });
-          if (!response.success) throw new Error(response.error ?? 'Generation failed');
-          const model: CADModel = {
-            id: response.model_id,
-            name: response.name,
-            mesh_data: response.mesh_data,
-            source_text: text,
-            created_at: new Date().toISOString(),
-          };
+          const { response, model } = await generateSolidModel(text, aiProvider, manufacturingType);
           set((state) => ({
             currentModel: model,
             models: [model, ...state.models.filter((m) => m.id !== model.id)],
@@ -198,18 +189,7 @@ export const useCADStore = create<CADStore>()(
       // ---------------------------------------------------------------- //
       exportModel: async (format, modelId) => {
         try {
-          let blob: Blob;
-          let filename: string;
-          if (format === 'stl') {
-            blob = await api.exportSTL(modelId);
-            filename = `model-${modelId}.stl`;
-          } else if (format === 'obj') {
-            blob = await api.exportOBJ(modelId);
-            filename = `model-${modelId}.obj`;
-          } else {
-            blob = await api.exportSTEP(modelId);
-            filename = `model-${modelId}.step`;
-          }
+          const { blob, filename } = await exportSolid(format, modelId);
           api.downloadBlob(blob, filename);
           get().addToast('success', `Exported ${format.toUpperCase()} successfully`);
         } catch (err) {
@@ -221,15 +201,8 @@ export const useCADStore = create<CADStore>()(
 
       exportGCode: async (type, modelId) => {
         try {
-          let blob: Blob;
           const { manufacturing } = get();
-          if (type === 'cnc') {
-            blob = await api.exportGCodeCNC(modelId, manufacturing.cncParams as CNCParams);
-          } else if (type === '3dprint') {
-            blob = await api.exportGCode3DPrint(modelId, manufacturing.printParams as PrintParams);
-          } else {
-            blob = await api.exportGCodeLaser(modelId, manufacturing.laserParams as LaserParams);
-          }
+          const blob = await exportCamGCode(type, modelId, manufacturing);
           api.downloadBlob(blob, `model-${modelId}-${type}.gcode`);
           get().addToast('success', `G-code exported successfully`);
         } catch (err) {
@@ -290,55 +263,38 @@ export const useCADStore = create<CADStore>()(
         const existing = get().collaboration.client;
         existing?.disconnect();
 
-        const client = new api.CollaborationClient(sessionId);
-
-        client.on('welcome', (event) => {
-          const sessionState = event['session_state'] as { participants?: Record<string, unknown> } | undefined;
-          const participants = (sessionState?.participants ?? {}) as Record<string, import('../types/cad').Participant>;
-          set((state) => ({
-            collaboration: {
-              ...state.collaboration,
-              participants,
-              isConnected: true,
-            },
-          }));
-        });
-
-        client.on('participant_joined', (event) => {
-          const p = event['participant'] as import('../types/cad').Participant;
-          set((state) => ({
-            collaboration: {
-              ...state.collaboration,
-              participants: { ...state.collaboration.participants, [p.participant_id]: p },
-            },
-          }));
-        });
-
-        client.on('participant_left', (event) => {
-          const pid = event['participant_id'] as string;
-          set((state) => {
-            const participants = { ...state.collaboration.participants };
-            delete participants[pid];
-            return { collaboration: { ...state.collaboration, participants } };
-          });
-        });
-
-        client.on('chat_message', (event) => {
-          set((state) => ({
-            collaboration: {
-              ...state.collaboration,
-              chat: [
-                ...state.collaboration.chat,
-                {
-                  participant_id: event['participant_id'] as string,
-                  participant_name: event['participant_name'] as string,
-                  color: event['color'] as string,
-                  message: event['message'] as string,
-                  timestamp: event['timestamp'] as string,
+        const client = createCollaborationWorkflow(sessionId, {
+          onWelcome: (participants) =>
+            set((state) => ({
+              collaboration: {
+                ...state.collaboration,
+                participants,
+                isConnected: true,
+              },
+            })),
+          onParticipantJoined: (participant) =>
+            set((state) => ({
+              collaboration: {
+                ...state.collaboration,
+                participants: {
+                  ...state.collaboration.participants,
+                  [participant.participant_id]: participant,
                 },
-              ],
-            },
-          }));
+              },
+            })),
+          onParticipantLeft: (participantId) =>
+            set((state) => {
+              const participants = { ...state.collaboration.participants };
+              delete participants[participantId];
+              return { collaboration: { ...state.collaboration, participants } };
+            }),
+          onChatMessage: (message) =>
+            set((state) => ({
+              collaboration: {
+                ...state.collaboration,
+                chat: [...state.collaboration.chat, message],
+              },
+            })),
         });
 
         client.connect();
@@ -363,9 +319,9 @@ export const useCADStore = create<CADStore>()(
       // ---------------------------------------------------------------- //
       // UI toggles                                                        //
       // ---------------------------------------------------------------- //
-      toggleWireframe: () => set((s) => ({ wireframe: !s.wireframe })),
-      toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
-      toggleMeasureMode: () => set((s) => ({ measureMode: !s.measureMode })),
+      toggleWireframe: () => set((s) => toggleWireframe(s)),
+      toggleGrid: () => set((s) => toggleGrid(s)),
+      toggleMeasureMode: () => set((s) => toggleMeasureMode(s)),
 
       // ---------------------------------------------------------------- //
       // Toasts                                                            //

@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  metadata-and-static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate canonical metadata and legal files
+        run: python scripts/check_metadata.py
+      - name: Install backend dependencies for static checks
+        run: pip install -r requirements.txt
+      - name: Python static compile check
+        run: python -m compileall backend/app
+      - name: Verify generated capability matrix is up to date
+        run: |
+          python scripts/generate_capability_matrix.py
+          git diff --exit-code CAPABILITIES.md
+
+  backend-tests:
+    runs-on: ubuntu-latest
+    needs: metadata-and-static-checks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest backend/tests/ -q
+
+  frontend-quality:
+    runs-on: ubuntu-latest
+    needs: metadata-and-static-checks
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  package-artifacts:
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-quality]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend dist
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+      - name: Prepare backend package artifact
+        run: |
+          mkdir -p dist/backend
+          tar -czf dist/backend/text-to-cad-backend.tgz backend requirements.txt version.json LICENSE
+      - name: Prepare frontend package artifact
+        run: |
+          mkdir -p dist/frontend
+          tar -czf dist/frontend/text-to-cad-frontend-dist.tgz -C frontend dist package.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-package
+          path: dist/backend/text-to-cad-backend.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/frontend/text-to-cad-frontend-dist.tgz
